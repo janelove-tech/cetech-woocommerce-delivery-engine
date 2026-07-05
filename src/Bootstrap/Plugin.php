@@ -49,6 +49,7 @@ use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
 use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
+use CetechDeliveryEngine\Presentation\Frontend\ProductDeliverySelectorRenderer;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationRuleValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationZoneValidator;
@@ -141,6 +142,8 @@ final class Plugin {
 		/** @var HealthCheckRegistry $health */
 		$health = $this->container->get( HealthCheckRegistry::class );
 		$health->run();
+
+		$this->container->get( ProductDeliverySelectorRenderer::class )->register();
 
 		$this->maybe_show_activation_notice();
 	}
@@ -330,7 +333,18 @@ final class Plugin {
 				$container->get( OriginRepositoryInterface::class ),
 				$container->get( RateCardRepositoryInterface::class ),
 				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
-				$container->get( ProductTargetResolver::class )
+				$container->get( ProductTargetResolver::class ),
+				$container->get( FeatureFlags::class )
+			)
+		);
+
+		$this->container->singleton(
+			ProductDeliverySelectorRenderer::class,
+			static fn ( ServiceContainer $container ): ProductDeliverySelectorRenderer => new ProductDeliverySelectorRenderer(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( ProductDeliveryRuleResolver::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class )
 			)
 		);
 

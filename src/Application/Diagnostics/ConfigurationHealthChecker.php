@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Application\Diagnostics;
 
+use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
@@ -44,7 +45,8 @@ final class ConfigurationHealthChecker {
 		private OriginRepositoryInterface $origin_repository,
 		private RateCardRepositoryInterface $rate_card_repository,
 		private ProductDeliveryRuleRepositoryInterface $product_rule_repository,
-		private ProductTargetResolver $target_resolver
+		private ProductTargetResolver $target_resolver,
+		private FeatureFlags $feature_flags
 	) {
 	}
 
@@ -63,6 +65,7 @@ final class ConfigurationHealthChecker {
 		$this->check_suppliers_origins( $diagnostics );
 		$this->check_rate_cards( $diagnostics );
 		$this->check_product_rules( $diagnostics );
+		$this->check_product_delivery_selector( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1129,6 +1132,90 @@ final class ConfigurationHealthChecker {
 		}
 
 		return FulfilmentChoice::Delivery->value === $choice;
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_product_delivery_selector( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ) {
+			return;
+		}
+
+		$active_rules = $this->product_rule_repository->listActive( [ 'limit' => 1 ] );
+
+		if ( [] === $active_rules ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'selector_enabled_no_active_product_rules',
+				__( 'Product selector enabled without active rules', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The product delivery selector is enabled but no active product delivery rules exist.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		$active_offer_count = 0;
+
+		foreach ( $this->delivery_offer_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $offer ) {
+			if ( RecordStatus::Active->value === (string) ( $offer['status'] ?? '' ) ) {
+				++$active_offer_count;
+			}
+		}
+
+		if ( 0 === $active_offer_count ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'selector_enabled_no_active_delivery_offers',
+				__( 'Product selector enabled without active delivery offers', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The product delivery selector is enabled but no active delivery offers are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		foreach ( $this->product_rule_repository->listActive( [ 'limit' => self::LIST_LIMIT ] ) as $rule ) {
+			if ( FulfilmentChoice::Delivery->value !== (string) ( $rule['fulfilment_choice'] ?? '' ) ) {
+				continue;
+			}
+
+			$rule_id   = (int) ( $rule['id'] ?? 0 );
+			$offer_ids = $this->decode_product_rule_offer_ids( $rule['delivery_offer_ids'] ?? null );
+
+			if ( [] === $offer_ids ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'selector_enabled_delivery_rule_without_offers',
+					__( 'Product selector: delivery rule without offers', 'cetech-woocommerce-delivery-engine' ),
+					__( 'The product delivery selector is enabled but an active delivery rule has no delivery offers.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id
+				);
+				continue;
+			}
+
+			foreach ( $offer_ids as $offer_id ) {
+				$offer = $this->delivery_offer_repository->findById( $offer_id );
+
+				if ( null === $offer ) {
+					continue;
+				}
+
+				if ( RecordStatus::Active->value !== (string) ( $offer['status'] ?? '' ) ) {
+					$this->add(
+						$diagnostics,
+						DiagnosticSeverity::Warning,
+						'selector_enabled_inactive_delivery_offer',
+						__( 'Product selector: inactive delivery offer referenced', 'cetech-woocommerce-delivery-engine' ),
+						__( 'The product delivery selector is enabled but an active product rule references an inactive delivery offer.', 'cetech-woocommerce-delivery-engine' ),
+						'product_delivery_rule',
+						$rule_id,
+						sprintf( 'delivery_offer_id=%d', $offer_id )
+					);
+				}
+			}
+		}
 	}
 
 	/**

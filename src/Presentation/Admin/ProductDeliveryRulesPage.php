@@ -138,6 +138,10 @@ final class ProductDeliveryRulesPage {
 			'Read-only admin preview of which active product rules would apply. Does not change configuration, cart, checkout, or product metadata.',
 			'cetech-woocommerce-delivery-engine'
 		) . '</p>';
+		echo '<p class="description">' . esc_html__(
+			'To preview the customer-facing product-page selector, enable the enable_product_delivery_selector feature flag and visit a product page. The selector is display-only in this phase and does not connect to cart or checkout.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
 
 		echo '<form method="post" action="">';
 		AdminFormHelper::nonce_field( self::ACTION_RESOLVE_TEST );

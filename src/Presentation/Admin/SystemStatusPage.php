@@ -8,6 +8,7 @@ use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
+use CetechDeliveryEngine\Presentation\Frontend\ProductDeliverySelectorRenderer;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
@@ -138,8 +139,12 @@ final class SystemStatusPage {
 			[
 				__( 'Product rule resolver registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliveryRuleResolver::class ) ),
 				__( 'Resolver contract version', 'cetech-woocommerce-delivery-engine' ) => ProductRuleResolutionResult::CONTRACT_VERSION,
-				__( 'Resolver storefront usage', 'cetech-woocommerce-delivery-engine' ) => __( 'None (admin test tool only)', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Resolver test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Product Rules → Test product rule resolution', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Resolver admin test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Product Rules → Test product rule resolution', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Product delivery selector flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ),
+				__( 'Product delivery selector renderer', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliverySelectorRenderer::class ) ),
+				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->feature_flags->is_enabled( 'enable_product_delivery_selector' )
+					? __( 'Enabled on product pages (display-only; no cart/checkout)', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Disabled (flag off by default)', 'cetech-woocommerce-delivery-engine' ),
 			]
 		);
 
