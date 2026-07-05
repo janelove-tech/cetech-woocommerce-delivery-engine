@@ -157,25 +157,6 @@ foreach ($path in $RequiredPaths) {
     }
 }
 
-Write-Step "Creating ZIP: $ZipPath"
-if (Test-Path $ZipPath) {
-    Remove-Item -LiteralPath $ZipPath -Force
-}
-
-$PackageParent = Split-Path -Parent $StagePluginDir
-Push-Location $PackageParent
-try {
-    Compress-Archive -Path $PluginSlug -DestinationPath $ZipPath -CompressionLevel Optimal -Force
-}
-finally {
-    Pop-Location
-}
-
-Write-Step 'Generating SHA256 checksum'
-$Hash = Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256
-$ChecksumLine = "$($Hash.Hash.ToLower())  $ZipName"
-Set-Content -LiteralPath $ShaPath -Value $ChecksumLine -NoNewline -Encoding ASCII
-
 function Get-ZipEntrySample {
     param(
         [string[]]$Entries,
@@ -189,62 +170,143 @@ function Get-ZipEntrySample {
     return (($Entries | Select-Object -First $Limit) -join ', ')
 }
 
-Write-Step 'Inspecting ZIP structure'
+function New-ForwardSlashPluginZip {
+    param(
+        [string]$DestinationZipPath,
+        [string]$SourcePluginDir,
+        [string]$Slug
+    )
+
+    if (Test-Path $DestinationZipPath) {
+        Remove-Item -LiteralPath $DestinationZipPath -Force
+    }
+
+    $sourceRoot = (Resolve-Path -LiteralPath $SourcePluginDir).Path
+    if (-not $sourceRoot.EndsWith('\')) {
+        $sourceRoot += '\'
+    }
+
+    $archive = [System.IO.Compression.ZipFile]::Open(
+        $DestinationZipPath,
+        [System.IO.Compression.ZipArchiveMode]::Create
+    )
+
+    try {
+        Get-ChildItem -LiteralPath $SourcePluginDir -Recurse -File | ForEach-Object {
+            $relativePath = $_.FullName.Substring($sourceRoot.Length) -replace '\\', '/'
+            $entryName    = "$Slug/$relativePath"
+
+            if ($entryName -like '*\*') {
+                throw "Refusing to create ZIP entry with backslashes: $entryName"
+            }
+
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $_.FullName,
+                $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            )
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+function Write-Sha256ChecksumFile {
+    param(
+        [string]$FilePath,
+        [string]$ChecksumFileName
+    )
+
+    $hash = Get-FileHash -LiteralPath $FilePath -Algorithm SHA256
+    $line = "$($hash.Hash.ToLower())  $ChecksumFileName"
+    Set-Content -LiteralPath (Join-Path (Split-Path -Parent $FilePath) "$ChecksumFileName.sha256") -Value $line -NoNewline -Encoding ASCII
+}
+
+function Test-PluginZipStructure {
+    param(
+        [string]$ZipPathToInspect,
+        [string]$Slug,
+        [string]$MainFile
+    )
+
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPathToInspect)
+    try {
+        $rawEntries = @($archive.Entries | ForEach-Object { $_.FullName })
+        $backslashEntries = @($rawEntries | Where-Object { $_ -like '*\*' })
+
+        if ($backslashEntries.Count -gt 0) {
+            $entrySample = Get-ZipEntrySample -Entries $rawEntries
+            throw "ZIP contains backslash entry names. Entry sample: $entrySample"
+        }
+
+        $entries = @($rawEntries | ForEach-Object { $_ -replace '\\', '/' })
+        $topLevel = @(
+            $entries |
+                ForEach-Object {
+                    if ($_ -match '^([^/]+)/') { $Matches[1] }
+                } |
+                Where-Object { $_ -ne '' } |
+                Select-Object -Unique
+        )
+
+        if ($topLevel.Count -ne 1 -or $topLevel[0] -ne $Slug) {
+            $entrySample = Get-ZipEntrySample -Entries $entries
+            throw "Unexpected ZIP top-level folder structure. Expected single folder '$Slug', found: $($topLevel -join ', '). Entry sample: $entrySample"
+        }
+
+        $zipMain           = "$Slug/$MainFile"
+        $zipSrcPrefix      = "$Slug/src/"
+        $zipDatabasePrefix = "$Slug/database/"
+        $zipVendorAutoload = "$Slug/vendor/autoload.php"
+
+        if (-not ($entries -contains $zipMain)) {
+            $entrySample = Get-ZipEntrySample -Entries $entries
+            throw "ZIP missing required entry: $zipMain. Entry sample: $entrySample"
+        }
+
+        if (-not ($entries | Where-Object { $_ -like "$zipSrcPrefix*" } | Select-Object -First 1)) {
+            $entrySample = Get-ZipEntrySample -Entries $entries
+            throw "ZIP missing required entries under: $zipSrcPrefix. Entry sample: $entrySample"
+        }
+
+        if (-not ($entries | Where-Object { $_ -like "$zipDatabasePrefix*" } | Select-Object -First 1)) {
+            $entrySample = Get-ZipEntrySample -Entries $entries
+            throw "ZIP missing required entries under: $zipDatabasePrefix. Entry sample: $entrySample"
+        }
+
+        if (-not ($entries -contains $zipVendorAutoload)) {
+            $entrySample = Get-ZipEntrySample -Entries $entries
+            throw "ZIP missing required Composer autoload entry: $zipVendorAutoload. Entry sample: $entrySample"
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+Write-Step "Creating ZIP: $ZipPath"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$Archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
-try {
-    $entries = @(
-        $Archive.Entries |
-            ForEach-Object { ($_.FullName -replace '\\', '/') }
-    )
-    $topLevel = @(
-        $entries |
-            ForEach-Object {
-                if ($_ -match '^([^/]+)/') { $Matches[1] }
-            } |
-            Where-Object { $_ -ne '' } |
-            Select-Object -Unique
-    )
+New-ForwardSlashPluginZip -DestinationZipPath $ZipPath -SourcePluginDir $StagePluginDir -Slug $PluginSlug
 
-    if ($topLevel.Count -ne 1 -or $topLevel[0] -ne $PluginSlug) {
-        $entrySample = Get-ZipEntrySample -Entries $entries
-        throw "Unexpected ZIP top-level folder structure. Expected single folder '$PluginSlug', found: $($topLevel -join ', '). Entry sample: $entrySample"
-    }
+Write-Step 'Generating SHA256 checksum'
+Write-Sha256ChecksumFile -FilePath $ZipPath -ChecksumFileName $ZipName
 
-    $zipMain            = "$PluginSlug/$PluginMainFile"
-    $zipSrcPrefix       = "$PluginSlug/src/"
-    $zipDatabasePrefix  = "$PluginSlug/database/"
-    $zipVendorAutoload  = "$PluginSlug/vendor/autoload.php"
+$SlugZipName = "$PluginSlug.zip"
+$SlugZipPath = Join-Path $DistDir $SlugZipName
+Copy-Item -LiteralPath $ZipPath -Destination $SlugZipPath -Force
+Write-Sha256ChecksumFile -FilePath $SlugZipPath -ChecksumFileName $SlugZipName
 
-    if (-not ($entries -contains $zipMain)) {
-        $entrySample = Get-ZipEntrySample -Entries $entries
-        throw "ZIP missing required entry: $zipMain. Entry sample: $entrySample"
-    }
+Write-Step 'Inspecting ZIP structure'
+Test-PluginZipStructure -ZipPathToInspect $ZipPath -Slug $PluginSlug -MainFile $PluginMainFile
 
-    if (-not ($entries | Where-Object { $_ -like "$zipSrcPrefix*" } | Select-Object -First 1)) {
-        $entrySample = Get-ZipEntrySample -Entries $entries
-        throw "ZIP missing required entries under: $zipSrcPrefix. Entry sample: $entrySample"
-    }
-
-    if (-not ($entries | Where-Object { $_ -like "$zipDatabasePrefix*" } | Select-Object -First 1)) {
-        $entrySample = Get-ZipEntrySample -Entries $entries
-        throw "ZIP missing required entries under: $zipDatabasePrefix. Entry sample: $entrySample"
-    }
-
-    if (-not ($entries -contains $zipVendorAutoload)) {
-        $entrySample = Get-ZipEntrySample -Entries $entries
-        throw "ZIP missing required Composer autoload entry: $zipVendorAutoload. Entry sample: $entrySample"
-    }
-
-    Write-Host 'ZIP top-level folder OK:' $PluginSlug
-    Write-Host 'ZIP contains root plugin file OK'
-    Write-Host 'ZIP contains src/ entries OK'
-    Write-Host 'ZIP contains database/ entries OK'
-    Write-Host 'ZIP contains vendor/autoload.php OK'
-}
-finally {
-    $Archive.Dispose()
-}
+Write-Host 'ZIP entry paths use forward slashes only'
+Write-Host 'ZIP top-level folder OK:' $PluginSlug
+Write-Host 'ZIP contains root plugin file OK'
+Write-Host 'ZIP contains src/ entries OK'
+Write-Host 'ZIP contains database/ entries OK'
+Write-Host 'ZIP contains vendor/autoload.php OK'
 
 Write-Step 'Cleaning staging directory'
 if (-not $StageRoot.StartsWith($BuildRoot, [StringComparison]::OrdinalIgnoreCase)) {
@@ -256,6 +318,8 @@ Write-Host ''
 Write-Host 'Build complete.'
 Write-Host "ZIP:      $ZipPath"
 Write-Host "SHA256:   $ShaPath"
+Write-Host "ZIP:      $SlugZipPath"
+Write-Host "SHA256:   $(Join-Path $DistDir "$SlugZipName.sha256")"
 Write-Host ''
 Write-Host 'Artifacts are gitignored. Do not commit ZIP files.'
 Write-Host 'Run staging smoke tests before tagging v1.0.0-rc.1.'
