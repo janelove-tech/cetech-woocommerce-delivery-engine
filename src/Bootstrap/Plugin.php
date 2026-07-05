@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Bootstrap;
 
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
@@ -339,12 +340,19 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			ProductDeliveryOptionsBuilder::class,
+			static fn ( ServiceContainer $container ): ProductDeliveryOptionsBuilder => new ProductDeliveryOptionsBuilder(
+				$container->get( DeliveryOfferRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
 			ProductDeliverySelectorRenderer::class,
 			static fn ( ServiceContainer $container ): ProductDeliverySelectorRenderer => new ProductDeliverySelectorRenderer(
 				$container->get( FeatureFlags::class ),
 				$container->get( Requirements::class ),
 				$container->get( ProductDeliveryRuleResolver::class ),
-				$container->get( DeliveryOfferRepositoryInterface::class )
+				$container->get( ProductDeliveryOptionsBuilder::class )
 			)
 		);
 

@@ -8,6 +8,8 @@ use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Presentation\Frontend\ProductDeliverySelectorRenderer;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
@@ -142,6 +144,9 @@ final class SystemStatusPage {
 				__( 'Resolver admin test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Product Rules → Test product rule resolution', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Product delivery selector flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ),
 				__( 'Product delivery selector renderer', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliverySelectorRenderer::class ) ),
+				__( 'Selector option contract version', 'cetech-woocommerce-delivery-engine' ) => ProductDeliveryOption::CONTRACT_VERSION,
+				__( 'Selector options builder registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliveryOptionsBuilder::class ) ),
+				__( 'Selector option persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Display-only; not persisted to cart', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->feature_flags->is_enabled( 'enable_product_delivery_selector' )
 					? __( 'Enabled on product pages (display-only; no cart/checkout)', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Disabled (flag off by default)', 'cetech-woocommerce-delivery-engine' ),

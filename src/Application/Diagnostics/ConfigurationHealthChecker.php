@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Application\Diagnostics;
 
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
@@ -1142,6 +1143,17 @@ final class ConfigurationHealthChecker {
 			return;
 		}
 
+		if ( ! class_exists( ProductDeliveryOptionsBuilder::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'selector_enabled_options_builder_missing',
+				__( 'Product selector: options builder missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The product delivery selector is enabled but ProductDeliveryOptionsBuilder is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
 		$active_rules = $this->product_rule_repository->listActive( [ 'limit' => 1 ] );
 
 		if ( [] === $active_rules ) {
@@ -1215,6 +1227,38 @@ final class ConfigurationHealthChecker {
 					);
 				}
 			}
+		}
+
+		$delivery_rules_total     = 0;
+		$delivery_rules_resolvable = 0;
+
+		foreach ( $this->product_rule_repository->listActive( [ 'limit' => self::LIST_LIMIT ] ) as $rule ) {
+			if ( FulfilmentChoice::Delivery->value !== (string) ( $rule['fulfilment_choice'] ?? '' ) ) {
+				continue;
+			}
+
+			++$delivery_rules_total;
+			$offer_ids = $this->decode_product_rule_offer_ids( $rule['delivery_offer_ids'] ?? null );
+
+			foreach ( $offer_ids as $offer_id ) {
+				$offer = $this->delivery_offer_repository->findById( $offer_id );
+
+				if ( null !== $offer && RecordStatus::Active->value === (string) ( $offer['status'] ?? '' ) ) {
+					++$delivery_rules_resolvable;
+					break;
+				}
+			}
+		}
+
+		if ( $delivery_rules_total > 0 && 0 === $delivery_rules_resolvable ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'selector_enabled_all_delivery_rules_unavailable',
+				__( 'Product selector: all delivery rules lack active offers', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The product delivery selector is enabled but every active delivery rule references missing or inactive delivery offers.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
 		}
 	}
 

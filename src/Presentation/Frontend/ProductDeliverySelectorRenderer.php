@@ -5,15 +5,11 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Presentation\Frontend;
 
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
-use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
-use CetechDeliveryEngine\Application\ProductRule\ResolvedProductDeliveryRule;
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Requirements;
-use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
-use CetechDeliveryEngine\Domain\Enum\FulfilmentAvailability;
-use CetechDeliveryEngine\Domain\Enum\FulfilmentChoice;
 use CetechDeliveryEngine\Domain\Enum\ProductTargetType;
-use CetechDeliveryEngine\Domain\Enum\RecordStatus;
 use WC_Product;
 
 /**
@@ -27,7 +23,7 @@ final class ProductDeliverySelectorRenderer {
 		private FeatureFlags $feature_flags,
 		private Requirements $requirements,
 		private ProductDeliveryRuleResolver $rule_resolver,
-		private DeliveryOfferRepositoryInterface $delivery_offer_repository
+		private ProductDeliveryOptionsBuilder $options_builder
 	) {
 	}
 
@@ -59,16 +55,11 @@ final class ProductDeliverySelectorRenderer {
 		}
 
 		if ( $product->is_type( 'variable' ) ) {
-			$this->render_block(
-				[
-					[
-						'type'    => 'notice',
-						'message' => __(
-							'Delivery options may update after selecting a product option.',
-							'cetech-woocommerce-delivery-engine'
-						),
-					],
-				]
+			$this->render_notice(
+				__(
+					'Delivery options may update after selecting a product option.',
+					'cetech-woocommerce-delivery-engine'
+				)
 			);
 
 			return;
@@ -89,25 +80,20 @@ final class ProductDeliverySelectorRenderer {
 			return;
 		}
 
-		$sections = $this->build_sections( $result );
+		$options = $this->options_builder->buildFromResolution( $result );
 
-		if ( [] === $sections ) {
-			$this->render_block(
-				[
-					[
-						'type'    => 'notice',
-						'message' => __(
-							'Delivery options are not available for this product.',
-							'cetech-woocommerce-delivery-engine'
-						),
-					],
-				]
+		if ( [] === $options ) {
+			$this->render_notice(
+				__(
+					'Delivery options are not available for this product.',
+					'cetech-woocommerce-delivery-engine'
+				)
 			);
 
 			return;
 		}
 
-		$this->render_block( $sections );
+		$this->render_options( $options );
 	}
 
 	private function resolve_product(): ?WC_Product {
@@ -128,204 +114,74 @@ final class ProductDeliverySelectorRenderer {
 	}
 
 	/**
-	 * @return list<array<string, mixed>>
+	 * @param list<ProductDeliveryOption> $options
 	 */
-	private function build_sections( ProductRuleResolutionResult $result ): array {
-		$sections = [];
+	private function render_options( array $options ): void {
+		$groups = [];
 
-		foreach ( FulfilmentAvailability::cases() as $availability_case ) {
-			$availability = $availability_case->value;
-			$rule         = $result->chosen_rules[ $availability ] ?? null;
-
-			if ( ! $rule instanceof ResolvedProductDeliveryRule ) {
-				continue;
-			}
-
-			$section = [
-				'type'         => 'availability',
-				'availability' => $this->availability_label( $availability ),
-				'choice'       => $this->choice_label( (string) $rule->fulfilment_choice ),
-				'items'        => [],
+		foreach ( $options as $option ) {
+			$group_key = $option->fulfilment_availability . ':' . $option->fulfilment_choice;
+			$groups[ $group_key ]   = $groups[ $group_key ] ?? [
+				'availability_label' => $option->fulfilment_availability_label,
+				'choice_label'       => $option->fulfilment_choice_label,
+				'options'            => [],
 			];
-
-			if ( FulfilmentChoice::StorePickup->value === $rule->fulfilment_choice ) {
-				$section['items'][] = [
-					'label'       => __( 'Store pickup available', 'cetech-woocommerce-delivery-engine' ),
-					'description' => null,
-					'estimate'    => null,
-				];
-			} else {
-				$offers = $this->load_active_public_offers( $rule->delivery_offer_ids );
-
-				if ( [] === $offers ) {
-					$section['items'][] = [
-						'label'       => __( 'Delivery unavailable', 'cetech-woocommerce-delivery-engine' ),
-						'description' => __(
-							'Delivery options for this product are not currently available.',
-							'cetech-woocommerce-delivery-engine'
-						),
-						'estimate'    => null,
-					];
-				} else {
-					foreach ( $offers as $offer ) {
-						$section['items'][] = $offer;
-					}
-				}
-			}
-
-			$sections[] = $section;
+			$groups[ $group_key ]['options'][] = $option;
 		}
 
-		return $sections;
-	}
-
-	/**
-	 * @param list<int> $offer_ids
-	 *
-	 * @return list<array{label: string, description: string|null, estimate: string|null}>
-	 */
-	private function load_active_public_offers( array $offer_ids ): array {
-		$offers = [];
-
-		foreach ( $offer_ids as $offer_id ) {
-			$row = $this->delivery_offer_repository->findById( (int) $offer_id );
-
-			if ( null === $row ) {
-				continue;
-			}
-
-			if ( RecordStatus::Active->value !== (string) ( $row['status'] ?? '' ) ) {
-				continue;
-			}
-
-			$label = trim( (string) ( $row['public_label'] ?? '' ) );
-
-			if ( '' === $label ) {
-				$label = __( 'Delivery option', 'cetech-woocommerce-delivery-engine' );
-			}
-
-			$description = trim( (string) ( $row['public_description'] ?? '' ) );
-
-			$offers[] = [
-				'label'       => $label,
-				'description' => '' !== $description ? $description : null,
-				'estimate'    => $this->format_estimate_text( $row ),
-			];
-		}
-
-		return $offers;
-	}
-
-	/**
-	 * @param array<string, mixed> $offer
-	 */
-	private function format_estimate_text( array $offer ): ?string {
-		$total_min = 0;
-		$total_max = 0;
-
-		foreach ( [ 'default_processing', 'default_transit', 'default_final_mile' ] as $prefix ) {
-			$min_key = $prefix . '_min';
-			$max_key = $prefix . '_max';
-			$min     = isset( $offer[ $min_key ] ) && '' !== $offer[ $min_key ] ? (int) $offer[ $min_key ] : 0;
-			$max     = isset( $offer[ $max_key ] ) && '' !== $offer[ $max_key ] ? (int) $offer[ $max_key ] : 0;
-
-			if ( $min > 0 ) {
-				$total_min += $min;
-			}
-
-			if ( $max > 0 ) {
-				$total_max += $max;
-			}
-		}
-
-		if ( $total_min <= 0 && $total_max <= 0 ) {
-			return null;
-		}
-
-		$unit = $this->duration_unit_label( (string) ( $offer['duration_unit'] ?? 'business_days' ) );
-
-		if ( $total_min > 0 && $total_max > 0 && $total_min !== $total_max ) {
-			return sprintf(
-				/* translators: 1: minimum duration, 2: maximum duration, 3: duration unit label */
-				__( 'Estimated %1$d–%2$d %3$s', 'cetech-woocommerce-delivery-engine' ),
-				$total_min,
-				$total_max,
-				$unit
-			);
-		}
-
-		$value = $total_max > 0 ? $total_max : $total_min;
-
-		return sprintf(
-			/* translators: 1: duration value, 2: duration unit label */
-			__( 'Estimated %1$d %2$s', 'cetech-woocommerce-delivery-engine' ),
-			$value,
-			$unit
-		);
-	}
-
-	private function duration_unit_label( string $unit ): string {
-		return match ( $unit ) {
-			'business_days' => __( 'business days', 'cetech-woocommerce-delivery-engine' ),
-			'days'          => __( 'days', 'cetech-woocommerce-delivery-engine' ),
-			default         => __( 'days', 'cetech-woocommerce-delivery-engine' ),
-		};
-	}
-
-	private function availability_label( string $availability ): string {
-		return match ( $availability ) {
-			FulfilmentAvailability::InternationalFulfilment->value => __( 'International fulfilment', 'cetech-woocommerce-delivery-engine' ),
-			FulfilmentAvailability::InStore->value                 => __( 'In store', 'cetech-woocommerce-delivery-engine' ),
-			FulfilmentAvailability::InWarehouse->value             => __( 'In warehouse', 'cetech-woocommerce-delivery-engine' ),
-			default                                                => $availability,
-		};
-	}
-
-	private function choice_label( string $choice ): string {
-		return match ( $choice ) {
-			FulfilmentChoice::Delivery->value    => __( 'Delivery', 'cetech-woocommerce-delivery-engine' ),
-			FulfilmentChoice::StorePickup->value => __( 'Store pickup', 'cetech-woocommerce-delivery-engine' ),
-			default                              => $choice,
-		};
-	}
-
-	/**
-	 * @param list<array<string, mixed>> $sections
-	 */
-	private function render_block( array $sections ): void {
 		echo '<div class="cetech-de-product-delivery-selector">';
 		echo '<h3 class="cetech-de-delivery-selector__title">' . esc_html__( 'Delivery options', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
 
-		foreach ( $sections as $section ) {
-			if ( 'notice' === ( $section['type'] ?? '' ) ) {
-				echo '<p class="cetech-de-delivery-selector__notice">' . esc_html( (string) ( $section['message'] ?? '' ) ) . '</p>';
-				continue;
-			}
-
+		foreach ( $groups as $group ) {
 			echo '<div class="cetech-de-delivery-availability">';
-			echo '<h4 class="cetech-de-delivery-availability__heading">' . esc_html( (string) ( $section['availability'] ?? '' ) ) . '</h4>';
-			echo '<p class="cetech-de-delivery-availability__choice"><em>' . esc_html( (string) ( $section['choice'] ?? '' ) ) . '</em></p>';
+			echo '<h4 class="cetech-de-delivery-availability__heading">' . esc_html( $group['availability_label'] ) . '</h4>';
+			echo '<p class="cetech-de-delivery-availability__choice"><em>' . esc_html( $group['choice_label'] ) . '</em></p>';
 			echo '<ul class="cetech-de-delivery-options">';
 
-			foreach ( (array) ( $section['items'] ?? [] ) as $item ) {
-				echo '<li class="cetech-de-delivery-option">';
-				echo '<span class="cetech-de-delivery-option__label">' . esc_html( (string) ( $item['label'] ?? '' ) ) . '</span>';
-
-				if ( ! empty( $item['description'] ) ) {
-					echo '<span class="cetech-de-delivery-option__description"> ' . esc_html( (string) $item['description'] ) . '</span>';
-				}
-
-				if ( ! empty( $item['estimate'] ) ) {
-					echo '<span class="cetech-de-delivery-option__estimate"> ' . esc_html( (string) $item['estimate'] ) . '</span>';
-				}
-
-				echo '</li>';
+			foreach ( $group['options'] as $option ) {
+				$this->render_option( $option );
 			}
 
 			echo '</ul>';
 			echo '</div>';
 		}
 
+		echo '</div>';
+	}
+
+	private function render_option( ProductDeliveryOption $option ): void {
+		$label = $option->delivery_offer_public_label ?? '';
+
+		if ( '' === $label ) {
+			return;
+		}
+
+		$class = $option->is_available
+			? 'cetech-de-delivery-option'
+			: 'cetech-de-delivery-option cetech-de-delivery-option--unavailable';
+
+		echo '<li class="' . esc_attr( $class ) . '">';
+		echo '<span class="cetech-de-delivery-option__label">' . esc_html( $label ) . '</span>';
+
+		if ( null !== $option->delivery_offer_public_description && '' !== $option->delivery_offer_public_description ) {
+			echo '<span class="cetech-de-delivery-option__description"> ' . esc_html( $option->delivery_offer_public_description ) . '</span>';
+		}
+
+		if ( null !== $option->estimate_text && '' !== $option->estimate_text ) {
+			echo '<span class="cetech-de-delivery-option__estimate"> ' . esc_html( $option->estimate_text ) . '</span>';
+		}
+
+		if ( ! $option->is_available && null !== $option->unavailable_reason && '' !== $option->unavailable_reason ) {
+			echo '<span class="cetech-de-delivery-option__unavailable-reason"> ' . esc_html( $option->unavailable_reason ) . '</span>';
+		}
+
+		echo '</li>';
+	}
+
+	private function render_notice( string $message ): void {
+		echo '<div class="cetech-de-product-delivery-selector">';
+		echo '<h3 class="cetech-de-delivery-selector__title">' . esc_html__( 'Delivery options', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
+		echo '<p class="cetech-de-delivery-selector__notice">' . esc_html( $message ) . '</p>';
 		echo '</div>';
 	}
 }
