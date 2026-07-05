@@ -15,6 +15,7 @@ final class AdminMenu {
 
 	public function __construct(
 		private SystemStatusPage $system_status_page,
+		private DeliverySettingsPage $delivery_settings_page,
 		private LogisticsProfilesPage $logistics_profiles_page,
 		private DeliveryOffersPage $delivery_offers_page,
 		private DestinationZonesPage $destination_zones_page,
@@ -28,6 +29,7 @@ final class AdminMenu {
 	public function register(): void {
 		add_action( 'admin_menu', [ $this, 'add_menus' ] );
 		add_action( 'admin_init', [ $this->system_status_page, 'handle_actions' ] );
+		add_action( 'admin_init', [ $this->delivery_settings_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->logistics_profiles_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->delivery_offers_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->destination_zones_page, 'handle_actions' ] );
@@ -60,6 +62,15 @@ final class AdminMenu {
 				'manage_delivery_settings',
 				self::SYSTEM_STATUS_SLUG,
 				[ $this->system_status_page, 'render' ]
+			);
+
+			add_submenu_page(
+				self::PARENT_SLUG,
+				__( 'Delivery Settings', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Settings', 'cetech-woocommerce-delivery-engine' ),
+				'manage_delivery_settings',
+				DeliverySettingsPage::SLUG,
+				[ $this->delivery_settings_page, 'render' ]
 			);
 		}
 

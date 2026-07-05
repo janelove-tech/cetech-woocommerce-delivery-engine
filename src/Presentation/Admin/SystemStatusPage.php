@@ -253,6 +253,17 @@ final class SystemStatusPage {
 
 		$flag_rows = [];
 
+		echo '<h2>' . esc_html__( 'Feature flags', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="description">' . esc_html__(
+			'Feature flags are managed on the Delivery Settings page. The table below is read-only for support and troubleshooting.',
+			'cetech-woocommerce-delivery-engine'
+		) . ' ';
+		printf(
+			'<a href="%1$s">%2$s</a></p>',
+			esc_url( AdminPageRenderer::list_url( DeliverySettingsPage::SLUG ) ),
+			esc_html__( 'Open Delivery Settings', 'cetech-woocommerce-delivery-engine' )
+		);
+
 		foreach ( $this->feature_flags->all() as $flag => $enabled ) {
 			$flag_rows[ $flag ] = $this->yes_no( $enabled );
 		}

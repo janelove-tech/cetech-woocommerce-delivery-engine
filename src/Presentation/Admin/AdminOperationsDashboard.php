@@ -174,7 +174,7 @@ final class AdminOperationsDashboard {
 		echo '</div><div class="cetech-de-button-group cetech-de-button-group--secondary">';
 		$this->render_button(
 			__( 'View Settings', 'cetech-woocommerce-delivery-engine' ),
-			'#cetech-de-advanced-details',
+			AdminPageRenderer::list_url( DeliverySettingsPage::SLUG ),
 			'link'
 		);
 		echo '</div></div></header>';
@@ -264,7 +264,7 @@ final class AdminOperationsDashboard {
 			__( 'Enable delivery at checkout', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Confirm WooCommerce shipping is configured and Delivery Engine checkout features are turned on.', 'cetech-woocommerce-delivery-engine' ),
 			$state['checkout_runtime'] && $state['woocommerce_active'],
-			'#cetech-de-advanced-details',
+			AdminPageRenderer::list_url( DeliverySettingsPage::SLUG ),
 			__( 'Review settings', 'cetech-woocommerce-delivery-engine' )
 		);
 
@@ -409,7 +409,7 @@ final class AdminOperationsDashboard {
 				'title'        => __( 'Checkout delivery is not active', 'cetech-woocommerce-delivery-engine' ),
 				'message'      => $message,
 				'action_label' => __( 'View advanced settings', 'cetech-woocommerce-delivery-engine' ),
-				'action_url'   => '#cetech-de-advanced-details',
+				'action_url'   => AdminPageRenderer::list_url( DeliverySettingsPage::SLUG ),
 			];
 		}
 

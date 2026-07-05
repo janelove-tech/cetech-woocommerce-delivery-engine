@@ -465,6 +465,26 @@ final class AdminPageLayout {
 				line-height: 1.5;
 			}
 			.cetech-de-contact-line + .cetech-de-contact-line { margin-top: 2px; }
+			.cetech-de-setting-code {
+				color: #a7aaad;
+				font-family: Consolas, Monaco, monospace;
+				font-size: 11px;
+				margin-top: 6px;
+			}
+			.cetech-de-help-card {
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 20px 22px;
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-help-steps {
+				margin: 0 0 14px 20px;
+				color: var(--cetech-de-text);
+				font-size: 13px;
+				line-height: 1.6;
+			}
+			.cetech-de-help-action { margin: 14px 0 0; }
 			@media (max-width: 782px) {
 				.cetech-de-dashboard-header,
 				.cetech-de-page-header { padding: 18px; }

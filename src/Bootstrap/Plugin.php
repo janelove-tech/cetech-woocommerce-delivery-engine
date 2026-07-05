@@ -66,6 +66,7 @@ use CetechDeliveryEngine\Presentation\Admin\ProductDeliveryRulesPage;
 use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
 use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
+use CetechDeliveryEngine\Presentation\Admin\DeliverySettingsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
 use CetechDeliveryEngine\Presentation\Email\CustomerOrderDeliveryEmailSummaryRenderer;
 use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
@@ -638,6 +639,20 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			DeliverySettingsPage::class,
+			static fn ( ServiceContainer $container ): DeliverySettingsPage => new DeliverySettingsPage(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( RateCardRepositoryInterface::class ),
+				new ShippingRateCalculationGate(
+					$container->get( FeatureFlags::class ),
+					$container->get( Requirements::class )
+				),
+				$container->get( AdminActionHandler::class )
+			)
+		);
+
+		$this->container->singleton(
 			SystemStatusPage::class,
 			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
 				$container->get( Requirements::class ),
@@ -661,6 +676,7 @@ final class Plugin {
 			AdminMenu::class,
 			static fn ( ServiceContainer $container ): AdminMenu => new AdminMenu(
 				$container->get( SystemStatusPage::class ),
+				$container->get( DeliverySettingsPage::class ),
 				$container->get( LogisticsProfilesPage::class ),
 				$container->get( DeliveryOffersPage::class ),
 				$container->get( DestinationZonesPage::class ),
