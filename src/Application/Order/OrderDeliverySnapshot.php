@@ -1,0 +1,125 @@
+<?php
+
+declare(strict_types=1);
+
+namespace CetechDeliveryEngine\Application\Order;
+
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
+
+/**
+ * Snapshot contract version and protected meta keys.
+ */
+final class OrderDeliverySnapshot {
+
+	public const VERSION = '1';
+
+	public const META_LINE_SNAPSHOT = '_cetech_de_delivery_snapshot';
+
+	public const META_LINE_SNAPSHOT_VERSION = '_cetech_de_delivery_snapshot_version';
+
+	public const META_ORDER_QUOTE_SNAPSHOT = '_cetech_de_delivery_quote_snapshot';
+
+	public const META_ORDER_SNAPSHOT_VERSION = '_cetech_de_order_delivery_snapshot_version';
+
+	public const QUOTE_STATUS_QUOTED = 'quoted';
+
+	public const QUOTE_STATUS_SELECTION_ONLY = 'selection_only';
+
+	public const QUOTE_STATUS_SKIPPED = 'skipped';
+
+	public const PACKAGE_STATUS_SUCCESS = 'success';
+
+	public const PACKAGE_STATUS_NOT_APPLICABLE = 'not_applicable';
+
+	public const PACKAGE_STATUS_FAILURE = 'failure';
+}
+
+/**
+ * Per order line delivery snapshot (protected meta JSON).
+ */
+final class OrderDeliveryLineSnapshot {
+
+	public function __construct(
+		public readonly string $contract_version,
+		public readonly string $snapshot_version,
+		public readonly int $product_id,
+		public readonly ?int $variation_id,
+		public readonly string $fulfilment_availability,
+		public readonly string $fulfilment_choice,
+		public readonly ?int $delivery_offer_id,
+		public readonly ?string $delivery_offer_public_label,
+		public readonly ?string $delivery_offer_public_description,
+		public readonly ?string $estimate_text,
+		public readonly ?int $rule_id,
+		public readonly ?int $destination_zone_id,
+		public readonly int $quantity,
+		public readonly string $currency_code,
+		public readonly ?string $quoted_amount,
+		public readonly string $quote_status,
+		public readonly ?int $rate_card_id,
+		public readonly ?string $rate_card_code,
+		public readonly string $snapshotted_at
+	) {
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function toArray(): array {
+		return [
+			'contract_version'                  => $this->contract_version,
+			'snapshot_version'                  => $this->snapshot_version,
+			'product_id'                        => $this->product_id,
+			'variation_id'                      => $this->variation_id,
+			'fulfilment_availability'           => $this->fulfilment_availability,
+			'fulfilment_choice'                 => $this->fulfilment_choice,
+			'delivery_offer_id'                 => $this->delivery_offer_id,
+			'delivery_offer_public_label'       => $this->delivery_offer_public_label,
+			'delivery_offer_public_description' => $this->delivery_offer_public_description,
+			'estimate_text'                     => $this->estimate_text,
+			'rule_id'                           => $this->rule_id,
+			'destination_zone_id'               => $this->destination_zone_id,
+			'quantity'                          => $this->quantity,
+			'currency_code'                     => $this->currency_code,
+			'quoted_amount'                     => $this->quoted_amount,
+			'quote_status'                      => $this->quote_status,
+			'rate_card_id'                      => $this->rate_card_id,
+			'rate_card_code'                    => $this->rate_card_code,
+			'snapshotted_at'                    => $this->snapshotted_at,
+		];
+	}
+}
+
+/**
+ * Order-level delivery/shipping quote snapshot (protected meta JSON).
+ */
+final class OrderDeliveryPackageSnapshot {
+
+	public function __construct(
+		public readonly string $snapshot_version,
+		public readonly ?string $shipping_method_id,
+		public readonly ?string $shipping_method_label,
+		public readonly ?string $package_total_delivery_amount,
+		public readonly string $currency_code,
+		public readonly ?int $destination_zone_id,
+		public readonly string $quote_status,
+		public readonly string $snapshotted_at
+	) {
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function toArray(): array {
+		return [
+			'snapshot_version'              => $this->snapshot_version,
+			'shipping_method_id'            => $this->shipping_method_id,
+			'shipping_method_label'         => $this->shipping_method_label,
+			'package_total_delivery_amount' => $this->package_total_delivery_amount,
+			'currency_code'                 => $this->currency_code,
+			'destination_zone_id'           => $this->destination_zone_id,
+			'quote_status'                  => $this->quote_status,
+			'snapshotted_at'                => $this->snapshotted_at,
+		];
+	}
+}

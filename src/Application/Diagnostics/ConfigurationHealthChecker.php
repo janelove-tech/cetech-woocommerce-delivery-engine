@@ -7,6 +7,8 @@ namespace CetechDeliveryEngine\Application\Diagnostics;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
@@ -81,6 +83,7 @@ final class ConfigurationHealthChecker {
 		$this->check_checkout_delivery_selection_validation( $diagnostics );
 		$this->check_rate_quote( $diagnostics );
 		$this->check_woocommerce_shipping_rate_calculation( $diagnostics );
+		$this->check_order_delivery_snapshot_persistence( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1600,6 +1603,81 @@ final class ConfigurationHealthChecker {
 				__( 'Shipping calculation enabled without active rate cards', 'cetech-woocommerce-delivery-engine' ),
 				__( 'WooCommerce shipping rate calculation is enabled but no active rate cards exist.', 'cetech-woocommerce-delivery-engine' ),
 				'rate_card'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_order_delivery_snapshot_persistence( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( OrderDeliverySnapshotGate::SNAPSHOT_FLAG ) ) {
+			return;
+		}
+
+		if ( ! $this->feature_flags->is_enabled( ShippingRateCalculationGate::SHIPPING_FLAG ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_shipping_calculation_disabled',
+				__( 'Order snapshot enabled without shipping calculation', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but enable_woocommerce_shipping_rate_calculation is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_checkout_delivery_selection_validation' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_checkout_validation_disabled',
+				__( 'Order snapshot enabled without checkout validation', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but enable_checkout_delivery_selection_validation is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_cart_capture_disabled',
+				__( 'Order snapshot enabled without cart capture', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but enable_cart_delivery_selection_capture is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_selector_disabled',
+				__( 'Order snapshot enabled without product selector', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but enable_product_delivery_selector is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotPersister::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_persister_missing',
+				__( 'Order snapshot: persister service missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but OrderDeliverySnapshotPersister is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! function_exists( 'WC' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_woocommerce_unavailable',
+				__( 'Order snapshot enabled without WooCommerce', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but WooCommerce is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
 			);
 		}
 	}

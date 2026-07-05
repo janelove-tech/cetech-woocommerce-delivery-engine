@@ -14,6 +14,9 @@ use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
 use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotBuilder;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\Shipping\SelectedOfferShippingIntegration;
 use CetechDeliveryEngine\Application\Shipping\SelectedOfferShippingRateCalculator;
 use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
@@ -159,6 +162,7 @@ final class Plugin {
 		$this->container->get( CartDeliverySelectionRevalidator::class )->register();
 		$this->container->get( CheckoutDeliverySelectionValidator::class )->register();
 		$this->container->get( SelectedOfferShippingIntegration::class )->register();
+		$this->container->get( OrderDeliverySnapshotPersister::class )->register();
 
 		$this->maybe_show_activation_notice();
 	}
@@ -446,6 +450,35 @@ final class Plugin {
 			SelectedOfferShippingIntegration::class,
 			static fn ( ServiceContainer $container ): SelectedOfferShippingIntegration => new SelectedOfferShippingIntegration(
 				$container->get( ShippingRateCalculationGate::class )
+			)
+		);
+
+		$this->container->singleton(
+			OrderDeliverySnapshotGate::class,
+			static fn ( ServiceContainer $container ): OrderDeliverySnapshotGate => new OrderDeliverySnapshotGate(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( ShippingRateCalculationGate::class )
+			)
+		);
+
+		$this->container->singleton(
+			OrderDeliverySnapshotBuilder::class,
+			static fn ( ServiceContainer $container ): OrderDeliverySnapshotBuilder => new OrderDeliverySnapshotBuilder(
+				$container->get( CartDeliverySelectionRevalidator::class ),
+				$container->get( PackageDestinationZoneResolver::class ),
+				$container->get( SelectedOfferShippingRateCalculator::class ),
+				$container->get( RateQuoteEngine::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
+			OrderDeliverySnapshotPersister::class,
+			static fn ( ServiceContainer $container ): OrderDeliverySnapshotPersister => new OrderDeliverySnapshotPersister(
+				$container->get( OrderDeliverySnapshotGate::class ),
+				$container->get( OrderDeliverySnapshotBuilder::class ),
+				$container->get( Logger::class )
 			)
 		);
 

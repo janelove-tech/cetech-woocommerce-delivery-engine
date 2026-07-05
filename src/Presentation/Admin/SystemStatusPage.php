@@ -7,6 +7,9 @@ namespace CetechDeliveryEngine\Presentation\Admin;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshot;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
 use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
@@ -153,6 +156,8 @@ final class SystemStatusPage {
 		$capture_active   = $capture_enabled && $selector_enabled;
 		$checkout_validation_active = $checkout_validation_enabled && $capture_active;
 		$shipping_runtime_active = $shipping_calculation_enabled && $checkout_validation_active;
+		$snapshot_flag_enabled   = $this->feature_flags->is_enabled( OrderDeliverySnapshotGate::SNAPSHOT_FLAG );
+		$snapshot_runtime_active = $snapshot_flag_enabled && $shipping_runtime_active;
 
 		$this->render_table(
 			__( 'Runtime readiness (admin/test only)', 'cetech-woocommerce-delivery-engine' ),
@@ -196,8 +201,13 @@ final class SystemStatusPage {
 				__( 'WooCommerce shipping method', 'cetech-woocommerce-delivery-engine' ) => $this->describe_shipping_method_registration( $shipping_runtime_active ),
 				__( 'Cart/checkout totals', 'cetech-woocommerce-delivery-engine' ) => $this->describe_cart_checkout_totals( $shipping_runtime_active ),
 				__( 'Missing quote behavior', 'cetech-woocommerce-delivery-engine' ) => __( 'No rate / no free fallback', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Order snapshot', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $snapshot_flag_enabled ),
+				__( 'Order snapshot persistence registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $snapshot_runtime_active && class_exists( OrderDeliverySnapshotPersister::class ) ),
+				__( 'Snapshot mode', 'cetech-woocommerce-delivery-engine' ) => $this->describe_snapshot_mode( $snapshot_flag_enabled, $snapshot_runtime_active ),
+				__( 'Order snapshot', 'cetech-woocommerce-delivery-engine' ) => $this->describe_order_snapshot_status( $snapshot_runtime_active ),
 				__( 'Shipment creation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Tracking timeline', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Public order delivery page', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipping calculation', 'cetech-woocommerce-delivery-engine' ) => $shipping_runtime_active
 					? __( 'Enabled (WooCommerce shipping rates only)', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
@@ -427,6 +437,30 @@ final class SystemStatusPage {
 		}
 
 		return __( 'Not modified', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_snapshot_mode( bool $snapshot_flag_enabled, bool $snapshot_runtime_active ): string {
+		if ( $snapshot_runtime_active ) {
+			return __( 'Order item protected meta only', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( $snapshot_flag_enabled ) {
+			return __( 'Disabled (upstream flags not ready)', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Disabled', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_order_snapshot_status( bool $snapshot_runtime_active ): string {
+		if ( $snapshot_runtime_active ) {
+			return sprintf(
+				/* translators: %s: protected meta key prefix */
+				__( 'Enabled (%s on order items/orders)', 'cetech-woocommerce-delivery-engine' ),
+				OrderDeliverySnapshot::META_LINE_SNAPSHOT
+			);
+		}
+
+		return __( 'Not enabled', 'cetech-woocommerce-delivery-engine' );
 	}
 
 	private function yes_no( bool $value ): string {
