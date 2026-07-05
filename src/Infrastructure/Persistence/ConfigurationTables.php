@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Infrastructure\Persistence;
 
 /**
- * Phase 2A configuration-domain tables.
+ * Plugin configuration and product-rule tables.
  */
 final class ConfigurationTables {
 
-	/** @var list<string> Table suffixes without WordPress prefix. */
+	/** @var list<string> Phase 2A configuration-domain table suffixes. */
 	public const SUFFIXES = [
 		'delivery_offers',
 		'destination_zones',
@@ -23,13 +23,25 @@ final class ConfigurationTables {
 		'audit_log',
 	];
 
+	/** @var list<string> Phase 2C1 product-rule table suffixes. */
+	public const PRODUCT_RULE_SUFFIXES = [
+		'product_delivery_rules',
+	];
+
+	/**
+	 * @return list<string>
+	 */
+	public static function all_suffixes(): array {
+		return array_merge( self::SUFFIXES, self::PRODUCT_RULE_SUFFIXES );
+	}
+
 	/**
 	 * @return list<string> Fully qualified table names for the current site.
 	 */
 	public static function all(): array {
 		$tables = [];
 
-		foreach ( self::SUFFIXES as $suffix ) {
+		foreach ( self::all_suffixes() as $suffix ) {
 			$tables[] = TableNames::for( $suffix );
 		}
 
@@ -50,19 +62,28 @@ final class ConfigurationTables {
 	}
 
 	public static function all_exist(): bool {
-		foreach ( self::SUFFIXES as $suffix ) {
-			if ( ! self::exists( $suffix ) ) {
-				return false;
-			}
-		}
-
-		return true;
+		return [] === self::missing();
 	}
 
 	/**
-	 * @return list<string> Missing table suffixes.
+	 * @return list<string> Missing table suffixes across all plugin tables.
 	 */
 	public static function missing(): array {
+		$missing = [];
+
+		foreach ( self::all_suffixes() as $suffix ) {
+			if ( ! self::exists( $suffix ) ) {
+				$missing[] = $suffix;
+			}
+		}
+
+		return $missing;
+	}
+
+	/**
+	 * @return list<string> Missing Phase 2A configuration-domain table suffixes.
+	 */
+	public static function missing_configuration_domain(): array {
 		$missing = [];
 
 		foreach ( self::SUFFIXES as $suffix ) {

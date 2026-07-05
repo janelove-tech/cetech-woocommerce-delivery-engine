@@ -20,7 +20,8 @@ final class AdminMenu {
 		private DestinationZonesPage $destination_zones_page,
 		private PickupLocationsPage $pickup_locations_page,
 		private SuppliersOriginsPage $suppliers_origins_page,
-		private RateCardsPage $rate_cards_page
+		private RateCardsPage $rate_cards_page,
+		private ProductDeliveryRulesPage $product_delivery_rules_page
 	) {
 	}
 
@@ -33,6 +34,7 @@ final class AdminMenu {
 		add_action( 'admin_init', [ $this->pickup_locations_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->suppliers_origins_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->rate_cards_page, 'handle_actions' ] );
+		add_action( 'admin_init', [ $this->product_delivery_rules_page, 'handle_actions' ] );
 	}
 
 	public function add_menus(): void {
@@ -125,6 +127,17 @@ final class AdminMenu {
 			);
 		}
 
+		if ( current_user_can( 'manage_product_delivery_rules' ) ) {
+			add_submenu_page(
+				self::PARENT_SLUG,
+				__( 'Product Rules', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Product Rules', 'cetech-woocommerce-delivery-engine' ),
+				'manage_product_delivery_rules',
+				ProductDeliveryRulesPage::SLUG,
+				[ $this->product_delivery_rules_page, 'render' ]
+			);
+		}
+
 		remove_submenu_page( self::PARENT_SLUG, self::PARENT_SLUG );
 	}
 
@@ -134,7 +147,8 @@ final class AdminMenu {
 			|| current_user_can( 'manage_delivery_offers' )
 			|| current_user_can( 'manage_delivery_zones' )
 			|| current_user_can( 'manage_private_sources' )
-			|| current_user_can( 'manage_delivery_rate_cards' );
+			|| current_user_can( 'manage_delivery_rate_cards' )
+			|| current_user_can( 'manage_product_delivery_rules' );
 	}
 
 	/**
@@ -149,6 +163,7 @@ final class AdminMenu {
 			'manage_delivery_zones',
 			'manage_private_sources',
 			'manage_delivery_rate_cards',
+			'manage_product_delivery_rules',
 		];
 
 		foreach ( $caps as $capability ) {

@@ -12,9 +12,9 @@ final class SchemaVersion {
 	public const OPTION_NAME = 'cetech_de_db_version';
 
 	/**
-	 * Target schema version for the current plugin release (Phase 2A configuration domain).
+	 * Target schema version for the current plugin release (Phase 2C1 product rules).
 	 */
-	public const TARGET = '1';
+	public const TARGET = '2';
 
 	/**
 	 * Legacy foundation schema version before configuration tables existed.

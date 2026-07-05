@@ -37,7 +37,7 @@ return new class implements VerifiableMigrationInterface {
 	}
 
 	public function verify(): void {
-		$missing = ConfigurationTables::missing();
+		$missing = ConfigurationTables::missing_configuration_domain();
 
 		if ( [] === $missing ) {
 			return;

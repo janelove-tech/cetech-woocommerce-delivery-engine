@@ -110,6 +110,7 @@ $table_suffixes = [
 	'rate_cards',
 	'rate_card_rules',
 	'audit_log',
+	'product_delivery_rules',
 ];
 
 foreach ( $table_suffixes as $suffix ) {

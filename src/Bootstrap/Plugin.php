@@ -17,11 +17,12 @@ use CetechDeliveryEngine\Domain\Audit\AuditLogRepositoryInterface;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
 use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
-use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
+use CetechDeliveryEngine\Domain\ProductRule\ProductDeliveryRuleRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
-use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
+use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbAuditLogRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDeliveryOfferRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDestinationRuleRepository;
@@ -29,6 +30,7 @@ use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDestinationZoneRepositor
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbLogisticsProfileRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbOriginRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbPickupLocationRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbProductDeliveryRuleRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbRateCardRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbSupplierRepository;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
@@ -41,6 +43,8 @@ use CetechDeliveryEngine\Presentation\Admin\DestinationZoneTestMatcher;
 use CetechDeliveryEngine\Presentation\Admin\DestinationZonesPage;
 use CetechDeliveryEngine\Presentation\Admin\LogisticsProfilesPage;
 use CetechDeliveryEngine\Presentation\Admin\PickupLocationsPage;
+use CetechDeliveryEngine\Presentation\Admin\ProductDeliveryRulesPage;
+use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
 use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
@@ -50,6 +54,7 @@ use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationZoneValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\LogisticsProfileValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\OriginValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\PickupLocationValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\ProductDeliveryRuleValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\RateCardValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\SupplierValidator;
 use CetechDeliveryEngine\Support\AdminNotice;
@@ -286,6 +291,25 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			ProductTargetResolver::class,
+			static fn ( ServiceContainer $container ): ProductTargetResolver => new ProductTargetResolver(
+				$container->get( Requirements::class )
+			)
+		);
+
+		$this->container->singleton(
+			ProductDeliveryRuleValidator::class,
+			static fn ( ServiceContainer $container ): ProductDeliveryRuleValidator => new ProductDeliveryRuleValidator(
+				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( ProductTargetResolver::class )
+			)
+		);
+
+		$this->container->singleton(
 			ConfigurationHealthChecker::class,
 			static fn ( ServiceContainer $container ): ConfigurationHealthChecker => new ConfigurationHealthChecker(
 				$container->get( LogisticsProfileRepositoryInterface::class ),
@@ -295,7 +319,9 @@ final class Plugin {
 				$container->get( PickupLocationRepositoryInterface::class ),
 				$container->get( SupplierRepositoryInterface::class ),
 				$container->get( OriginRepositoryInterface::class ),
-				$container->get( RateCardRepositoryInterface::class )
+				$container->get( RateCardRepositoryInterface::class ),
+				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
+				$container->get( ProductTargetResolver::class )
 			)
 		);
 
@@ -371,6 +397,20 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			ProductDeliveryRulesPage::class,
+			static fn ( ServiceContainer $container ): ProductDeliveryRulesPage => new ProductDeliveryRulesPage(
+				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( ProductDeliveryRuleValidator::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
 			SystemStatusPage::class,
 			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
 				$container->get( Requirements::class ),
@@ -385,6 +425,7 @@ final class Plugin {
 				$container->get( SupplierRepositoryInterface::class ),
 				$container->get( OriginRepositoryInterface::class ),
 				$container->get( RateCardRepositoryInterface::class ),
+				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
 				$container->get( ConfigurationHealthChecker::class )
 			)
 		);
@@ -398,7 +439,8 @@ final class Plugin {
 				$container->get( DestinationZonesPage::class ),
 				$container->get( PickupLocationsPage::class ),
 				$container->get( SuppliersOriginsPage::class ),
-				$container->get( RateCardsPage::class )
+				$container->get( RateCardsPage::class ),
+				$container->get( ProductDeliveryRulesPage::class )
 			)
 		);
 	}
@@ -442,6 +484,11 @@ final class Plugin {
 		$this->container->singleton(
 			RateCardRepositoryInterface::class,
 			static fn (): RateCardRepositoryInterface => new WpdbRateCardRepository()
+		);
+
+		$this->container->singleton(
+			ProductDeliveryRuleRepositoryInterface::class,
+			static fn (): ProductDeliveryRuleRepositoryInterface => new WpdbProductDeliveryRuleRepository()
 		);
 
 		$this->container->singleton(

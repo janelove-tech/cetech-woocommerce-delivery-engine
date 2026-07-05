@@ -7,11 +7,14 @@ namespace CetechDeliveryEngine\Application\Diagnostics;
 use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
+use CetechDeliveryEngine\Domain\Enum\FulfilmentAvailability;
+use CetechDeliveryEngine\Domain\Enum\FulfilmentChoice;
 use CetechDeliveryEngine\Domain\Enum\DestinationRuleMatchMode;
 use CetechDeliveryEngine\Domain\Enum\DestinationRuleType;
 use CetechDeliveryEngine\Domain\Enum\RateCardChargeType;
 use CetechDeliveryEngine\Domain\Enum\RecordStatus;
 use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
+use CetechDeliveryEngine\Domain\ProductRule\ProductDeliveryRuleRepositoryInterface;
 use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
 use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
@@ -19,6 +22,8 @@ use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
 use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbProductDeliveryRuleRepository;
+use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 
 /**
  * Read-only configuration health diagnostics for wp-admin use only.
@@ -37,7 +42,9 @@ final class ConfigurationHealthChecker {
 		private PickupLocationRepositoryInterface $pickup_location_repository,
 		private SupplierRepositoryInterface $supplier_repository,
 		private OriginRepositoryInterface $origin_repository,
-		private RateCardRepositoryInterface $rate_card_repository
+		private RateCardRepositoryInterface $rate_card_repository,
+		private ProductDeliveryRuleRepositoryInterface $product_rule_repository,
+		private ProductTargetResolver $target_resolver
 	) {
 	}
 
@@ -55,6 +62,7 @@ final class ConfigurationHealthChecker {
 		$this->check_destinations( $diagnostics );
 		$this->check_suppliers_origins( $diagnostics );
 		$this->check_rate_cards( $diagnostics );
+		$this->check_product_rules( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -109,6 +117,12 @@ final class ConfigurationHealthChecker {
 				'title' => __( 'No rate cards', 'cetech-woocommerce-delivery-engine' ),
 				'message' => __( 'No rate cards are configured.', 'cetech-woocommerce-delivery-engine' ),
 				'entity'  => 'rate_card',
+			],
+			'zero_product_delivery_rules' => [
+				'count' => $this->product_rule_repository->count_all(),
+				'title' => __( 'No product delivery rules', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No product delivery rules are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'product_delivery_rule',
 			],
 		];
 
@@ -710,6 +724,326 @@ final class ConfigurationHealthChecker {
 				sprintf( 'base_currency=%s', $currency )
 			);
 		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_product_rules( array &$diagnostics ): void {
+		$offers    = $this->index_by_id( $this->delivery_offer_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$profiles  = $this->index_by_id( $this->logistics_profile_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$suppliers = $this->index_by_id( $this->supplier_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$origins   = $this->index_by_id( $this->origin_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$active_signatures = [];
+
+		foreach ( $this->product_rule_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $rule ) {
+			$rule_id = (int) ( $rule['id'] ?? 0 );
+			$status  = (string) ( $rule['status'] ?? '' );
+			$target_type = (string) ( $rule['target_type'] ?? '' );
+			$target_id   = (int) ( $rule['target_id'] ?? 0 );
+			$availability = (string) ( $rule['fulfilment_availability'] ?? '' );
+			$choice       = (string) ( $rule['fulfilment_choice'] ?? '' );
+
+			if ( RecordStatus::Active->value !== $status ) {
+				continue;
+			}
+
+			if ( $this->target_resolver->is_woocommerce_available() && ! $this->target_resolver->target_exists( $target_type, $target_id ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'product_rule_missing_target',
+					__( 'Product rule missing target', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active product rule references a WooCommerce target that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id,
+					sprintf( 'target_type=%s target_id=%d', $target_type, $target_id )
+				);
+			}
+
+			if ( ! $this->is_valid_fulfilment_availability( $availability ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'product_rule_invalid_availability',
+					__( 'Product rule invalid availability', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active product rule uses an unknown fulfilment availability value.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id,
+					sprintf( 'fulfilment_availability=%s', $availability )
+				);
+			}
+
+			if ( ! $this->is_valid_fulfilment_choice( $choice ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'product_rule_invalid_choice',
+					__( 'Product rule invalid choice', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active product rule uses an unknown fulfilment choice value.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id,
+					sprintf( 'fulfilment_choice=%s', $choice )
+				);
+			}
+
+			if ( ! $this->is_valid_availability_choice_pair( $availability, $choice ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'product_rule_invalid_availability_choice',
+					__( 'Product rule invalid availability/choice pair', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active product rule combines fulfilment availability and choice in an unsupported way.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id,
+					sprintf( 'availability=%s choice=%s', $availability, $choice )
+				);
+			}
+
+			$this->check_product_rule_offers( $diagnostics, $rule, $offers );
+			$this->check_product_rule_optional_fk(
+				$diagnostics,
+				$rule,
+				'logistics_profile_id',
+				'logistics_profile',
+				$profiles,
+				'product_rule_missing_logistics_profile',
+				'product_rule_inactive_logistics_profile'
+			);
+			$this->check_product_rule_optional_fk(
+				$diagnostics,
+				$rule,
+				'supplier_id',
+				'supplier',
+				$suppliers,
+				'product_rule_missing_supplier',
+				'product_rule_inactive_supplier'
+			);
+			$this->check_product_rule_optional_fk(
+				$diagnostics,
+				$rule,
+				'origin_id',
+				'origin',
+				$origins,
+				'product_rule_missing_origin',
+				'product_rule_inactive_origin'
+			);
+
+			$supplier_id = isset( $rule['supplier_id'] ) ? (int) $rule['supplier_id'] : 0;
+			$origin_id     = isset( $rule['origin_id'] ) ? (int) $rule['origin_id'] : 0;
+
+			if ( $supplier_id > 0 && $origin_id > 0 && isset( $origins[ $origin_id ] ) ) {
+				$origin_supplier = (int) ( $origins[ $origin_id ]['supplier_id'] ?? 0 );
+
+				if ( $origin_supplier !== $supplier_id ) {
+					$this->add(
+						$diagnostics,
+						DiagnosticSeverity::Error,
+						'product_rule_origin_supplier_mismatch',
+						__( 'Product rule origin/supplier mismatch', 'cetech-woocommerce-delivery-engine' ),
+						__( 'An active product rule links an origin that does not belong to the selected supplier.', 'cetech-woocommerce-delivery-engine' ),
+						'product_delivery_rule',
+						$rule_id,
+						sprintf( 'supplier_id=%d origin_id=%d', $supplier_id, $origin_id )
+					);
+				}
+			}
+
+			$signature = sprintf( '%s|%d|%s', $target_type, $target_id, $availability );
+			$active_signatures[ $signature ]   = $active_signatures[ $signature ] ?? [];
+			$active_signatures[ $signature ][] = $rule_id;
+		}
+
+		foreach ( $active_signatures as $signature => $rule_ids ) {
+			if ( count( $rule_ids ) < 2 ) {
+				continue;
+			}
+
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'duplicate_active_product_rule',
+				__( 'Duplicate active product rules', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Multiple active product rules share the same target and fulfilment availability.', 'cetech-woocommerce-delivery-engine' ),
+				'product_delivery_rule',
+				(int) $rule_ids[0],
+				sprintf( 'signature=%s ids=%s', $signature, implode( ',', array_map( 'strval', $rule_ids ) ) )
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 * @param array<string, mixed> $rule
+	 * @param array<int, array<string, mixed>> $offers
+	 */
+	private function check_product_rule_offers( array &$diagnostics, array $rule, array $offers ): void {
+		$rule_id = (int) ( $rule['id'] ?? 0 );
+		$choice  = (string) ( $rule['fulfilment_choice'] ?? '' );
+		$offer_ids = $this->decode_product_rule_offer_ids( $rule['delivery_offer_ids'] ?? null );
+
+		if ( FulfilmentChoice::StorePickup->value === $choice ) {
+			return;
+		}
+
+		foreach ( $offer_ids as $offer_id ) {
+			if ( ! isset( $offers[ $offer_id ] ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Error,
+					'product_rule_missing_delivery_offer',
+					__( 'Product rule missing delivery offer', 'cetech-woocommerce-delivery-engine' ),
+					__( 'A product rule references a delivery offer that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id,
+					sprintf( 'delivery_offer_id=%d', $offer_id )
+				);
+				continue;
+			}
+
+			$offer_status = (string) ( $offers[ $offer_id ]['status'] ?? '' );
+
+			if ( $this->is_non_active_status( $offer_status ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'product_rule_inactive_delivery_offer',
+					__( 'Product rule inactive delivery offer', 'cetech-woocommerce-delivery-engine' ),
+					__( 'A product rule references a delivery offer that is not active.', 'cetech-woocommerce-delivery-engine' ),
+					'product_delivery_rule',
+					$rule_id,
+					sprintf( 'delivery_offer_id=%d status=%s', $offer_id, $offer_status )
+				);
+			}
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 * @param array<string, mixed> $rule
+	 * @param array<int, array<string, mixed>> $entities
+	 */
+	private function check_product_rule_optional_fk(
+		array &$diagnostics,
+		array $rule,
+		string $field,
+		string $entity_type,
+		array $entities,
+		string $missing_code,
+		string $inactive_code
+	): void {
+		$rule_id = (int) ( $rule['id'] ?? 0 );
+		$fk_id   = isset( $rule[ $field ] ) ? (int) $rule[ $field ] : 0;
+
+		if ( $fk_id <= 0 ) {
+			return;
+		}
+
+		if ( ! isset( $entities[ $fk_id ] ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				$missing_code,
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'Product rule missing %s', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'A product rule references a %s that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				'product_delivery_rule',
+				$rule_id,
+				sprintf( '%s=%d', $field, $fk_id )
+			);
+
+			return;
+		}
+
+		$entity_status = (string) ( $entities[ $fk_id ]['status'] ?? '' );
+
+		if ( $this->is_non_active_status( $entity_status ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				$inactive_code,
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'Product rule inactive %s', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'A product rule references a %s that is not active.', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				'product_delivery_rule',
+				$rule_id,
+				sprintf( '%s=%d status=%s', $field, $fk_id, $entity_status )
+			);
+		}
+	}
+
+	/**
+	 * @return list<int>
+	 */
+	private function decode_product_rule_offer_ids( mixed $stored ): array {
+		if ( $this->product_rule_repository instanceof WpdbProductDeliveryRuleRepository ) {
+			return $this->product_rule_repository->decode_offer_ids( $stored );
+		}
+
+		if ( null === $stored || '' === $stored ) {
+			return [];
+		}
+
+		$decoded = json_decode( (string) $stored, true );
+
+		if ( ! is_array( $decoded ) ) {
+			return [];
+		}
+
+		$ids = [];
+
+		foreach ( $decoded as $value ) {
+			$int = (int) $value;
+
+			if ( $int > 0 ) {
+				$ids[] = $int;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
+	}
+
+	private function is_valid_fulfilment_availability( string $availability ): bool {
+		foreach ( FulfilmentAvailability::cases() as $case ) {
+			if ( $case->value === $availability ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function is_valid_fulfilment_choice( string $choice ): bool {
+		foreach ( FulfilmentChoice::cases() as $case ) {
+			if ( $case->value === $choice ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function is_valid_availability_choice_pair( string $availability, string $choice ): bool {
+		if ( FulfilmentAvailability::InStore->value === $availability ) {
+			return FulfilmentChoice::Delivery->value === $choice
+				|| FulfilmentChoice::StorePickup->value === $choice;
+		}
+
+		return FulfilmentChoice::Delivery->value === $choice;
 	}
 
 	/**
