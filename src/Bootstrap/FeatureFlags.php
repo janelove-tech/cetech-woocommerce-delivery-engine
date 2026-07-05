@@ -13,7 +13,8 @@ final class FeatureFlags {
 
 	/** @var array<string, bool> */
 	private const DEFAULTS = [
-		'enable_product_delivery_selector' => false,
+		'enable_product_delivery_selector'         => false,
+		'enable_cart_delivery_selection_capture'   => false,
 		'enable_shipment_records'          => true,
 		'enable_customer_timeline'         => false,
 		'enable_tracking_links'            => true,

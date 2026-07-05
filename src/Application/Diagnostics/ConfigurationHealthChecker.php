@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Application\Diagnostics;
 
+use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
@@ -70,6 +71,7 @@ final class ConfigurationHealthChecker {
 		$this->check_rate_cards( $diagnostics );
 		$this->check_product_rules( $diagnostics );
 		$this->check_product_delivery_selector( $diagnostics );
+		$this->check_cart_delivery_selection_capture( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1282,6 +1284,72 @@ final class ConfigurationHealthChecker {
 				'selector_enabled_all_delivery_rules_unavailable',
 				__( 'Product selector: all delivery rules lack active offers', 'cetech-woocommerce-delivery-engine' ),
 				__( 'The product delivery selector is enabled but every active delivery rule references missing or inactive delivery offers.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_cart_delivery_selection_capture( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' ) ) {
+			return;
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'cart_capture_enabled_selector_disabled',
+				__( 'Cart capture enabled without product selector', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart delivery selection capture is enabled but enable_product_delivery_selector is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( ProductDeliverySelectionValidator::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'cart_capture_enabled_selection_validator_missing',
+				__( 'Cart capture: selection validator missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart delivery selection capture is enabled but ProductDeliverySelectionValidator is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( ProductDeliveryOptionsBuilder::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'cart_capture_enabled_options_builder_missing',
+				__( 'Cart capture: options builder missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart delivery selection capture is enabled but ProductDeliveryOptionsBuilder is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( CartDeliverySelectionCapture::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'cart_capture_enabled_capture_service_missing',
+				__( 'Cart capture: capture service missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart delivery selection capture is enabled but CartDeliverySelectionCapture is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		$active_rules = $this->product_rule_repository->listActive( [ 'limit' => 1 ] );
+
+		if ( [] === $active_rules ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'cart_capture_enabled_no_active_product_rules',
+				__( 'Cart capture enabled without active rules', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart delivery selection capture is enabled but no active product delivery rules exist.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
 		}

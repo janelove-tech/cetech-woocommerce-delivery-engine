@@ -7,7 +7,7 @@ namespace CetechDeliveryEngine\Application\Selector;
 /**
  * Server-side handoff contract for a validated product delivery selection.
  *
- * Not persisted to cart, session, or order in this phase. No private supplier/origin data.
+ * May be stored in WooCommerce cart item data when cart capture is enabled. No private supplier/origin data.
  */
 final class ProductDeliverySelectionIntent {
 

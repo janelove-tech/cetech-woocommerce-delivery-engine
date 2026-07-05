@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Presentation\Admin;
 
+use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
@@ -138,24 +139,32 @@ final class SystemStatusPage {
 			]
 		);
 
+		$capture_enabled = $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' );
+		$selector_enabled = $this->feature_flags->is_enabled( 'enable_product_delivery_selector' );
+		$capture_active   = $capture_enabled && $selector_enabled;
+
 		$this->render_table(
 			__( 'Runtime readiness (admin/test only)', 'cetech-woocommerce-delivery-engine' ),
 			[
 				__( 'Product rule resolver registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliveryRuleResolver::class ) ),
 				__( 'Resolver contract version', 'cetech-woocommerce-delivery-engine' ) => ProductRuleResolutionResult::CONTRACT_VERSION,
 				__( 'Resolver admin test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Product Rules → Test product rule resolution', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Product delivery selector flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ),
+				__( 'Product delivery selector flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $selector_enabled ),
+				__( 'Cart delivery selection capture flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $capture_enabled ),
 				__( 'Product delivery selector renderer', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliverySelectorRenderer::class ) ),
 				__( 'Selector option contract version', 'cetech-woocommerce-delivery-engine' ) => ProductDeliveryOption::CONTRACT_VERSION,
 				__( 'Selector options builder registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliveryOptionsBuilder::class ) ),
-				__( 'Selector option persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Display-only; not persisted to cart', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add-to-cart capture registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $capture_active && class_exists( CartDeliverySelectionCapture::class ) ),
 				__( 'Selection validator registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliverySelectionValidator::class ) ),
 				__( 'Selection intent contract version', 'cetech-woocommerce-delivery-engine' ) => ProductDeliverySelectionIntent::CONTRACT_VERSION,
-				__( 'Selection persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Add-to-cart validation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->feature_flags->is_enabled( 'enable_product_delivery_selector' )
-					? __( 'Enabled on product pages (display-only; no cart/checkout)', 'cetech-woocommerce-delivery-engine' )
-					: __( 'Disabled (flag off by default)', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart item selection persistence', 'cetech-woocommerce-delivery-engine' ) => $capture_active
+					? __( 'Enabled (cart item data only; no checkout/order)', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add-to-cart validation', 'cetech-woocommerce-delivery-engine' ) => $capture_active
+					? __( 'Enabled when capture flag active', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Shipping calculation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->describe_selector_storefront_output( $selector_enabled, $capture_active ),
 			]
 		);
 
@@ -324,6 +333,18 @@ final class SystemStatusPage {
 		echo '<div class="notice notice-success is-dismissible"><p>';
 		echo esc_html__( 'Delivery capabilities were re-synced successfully.', 'cetech-woocommerce-delivery-engine' );
 		echo '</p></div>';
+	}
+
+	private function describe_selector_storefront_output( bool $selector_enabled, bool $capture_active ): string {
+		if ( ! $selector_enabled ) {
+			return __( 'Disabled (flag off by default)', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( $capture_active ) {
+			return __( 'Enabled on simple product pages (radio selection inside add-to-cart form; no checkout/shipping)', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Enabled on product pages (display-only; no cart/checkout)', 'cetech-woocommerce-delivery-engine' );
 	}
 
 	private function yes_no( bool $value ): string {

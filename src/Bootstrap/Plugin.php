@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Bootstrap;
 
+use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
@@ -146,6 +147,7 @@ final class Plugin {
 		$health->run();
 
 		$this->container->get( ProductDeliverySelectorRenderer::class )->register();
+		$this->container->get( CartDeliverySelectionCapture::class )->register();
 
 		$this->maybe_show_activation_notice();
 	}
@@ -354,6 +356,17 @@ final class Plugin {
 				$container->get( Requirements::class ),
 				$container->get( ProductDeliveryRuleResolver::class ),
 				$container->get( ProductDeliveryOptionsBuilder::class )
+			)
+		);
+
+		$this->container->singleton(
+			CartDeliverySelectionCapture::class,
+			static fn ( ServiceContainer $container ): CartDeliverySelectionCapture => new CartDeliverySelectionCapture(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( ProductDeliveryRuleResolver::class ),
+				$container->get( ProductDeliveryOptionsBuilder::class ),
+				$container->get( ProductDeliverySelectionValidator::class )
 			)
 		);
 
