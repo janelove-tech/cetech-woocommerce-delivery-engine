@@ -15,6 +15,7 @@ final class FeatureFlags {
 	private const DEFAULTS = [
 		'enable_product_delivery_selector'         => false,
 		'enable_cart_delivery_selection_capture'   => false,
+		'enable_checkout_delivery_selection_validation' => false,
 		'enable_shipment_records'          => true,
 		'enable_customer_timeline'         => false,
 		'enable_tracking_links'            => true,

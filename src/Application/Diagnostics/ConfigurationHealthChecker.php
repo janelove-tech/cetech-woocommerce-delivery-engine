@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Application\Diagnostics;
 
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
+use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
+use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
@@ -72,6 +74,7 @@ final class ConfigurationHealthChecker {
 		$this->check_product_rules( $diagnostics );
 		$this->check_product_delivery_selector( $diagnostics );
 		$this->check_cart_delivery_selection_capture( $diagnostics );
+		$this->check_checkout_delivery_selection_validation( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1341,6 +1344,17 @@ final class ConfigurationHealthChecker {
 			);
 		}
 
+		if ( ! class_exists( CartDeliverySelectionRevalidator::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'cart_capture_enabled_revalidator_missing',
+				__( 'Cart capture: revalidator missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart delivery selection capture is enabled but CartDeliverySelectionRevalidator is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
 		$active_rules = $this->product_rule_repository->listActive( [ 'limit' => 1 ] );
 
 		if ( [] === $active_rules ) {
@@ -1350,6 +1364,59 @@ final class ConfigurationHealthChecker {
 				'cart_capture_enabled_no_active_product_rules',
 				__( 'Cart capture enabled without active rules', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Cart delivery selection capture is enabled but no active product delivery rules exist.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_checkout_delivery_selection_validation( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( 'enable_checkout_delivery_selection_validation' ) ) {
+			return;
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'checkout_validation_enabled_cart_capture_disabled',
+				__( 'Checkout validation enabled without cart capture', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Checkout delivery selection validation is enabled but enable_cart_delivery_selection_capture is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'checkout_validation_enabled_selector_disabled',
+				__( 'Checkout validation enabled without product selector', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Checkout delivery selection validation is enabled but enable_product_delivery_selector is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( CheckoutDeliverySelectionValidator::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'checkout_validation_enabled_validator_missing',
+				__( 'Checkout validation: validator service missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Checkout delivery selection validation is enabled but CheckoutDeliverySelectionValidator is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( CartDeliverySelectionRevalidator::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'checkout_validation_enabled_revalidator_missing',
+				__( 'Checkout validation: cart revalidator missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Checkout delivery selection validation is enabled but CartDeliverySelectionRevalidator is not available.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
 		}

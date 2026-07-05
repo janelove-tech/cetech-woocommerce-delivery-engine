@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Bootstrap;
 
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
+use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
+use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
@@ -148,6 +150,8 @@ final class Plugin {
 
 		$this->container->get( ProductDeliverySelectorRenderer::class )->register();
 		$this->container->get( CartDeliverySelectionCapture::class )->register();
+		$this->container->get( CartDeliverySelectionRevalidator::class )->register();
+		$this->container->get( CheckoutDeliverySelectionValidator::class )->register();
 
 		$this->maybe_show_activation_notice();
 	}
@@ -367,6 +371,25 @@ final class Plugin {
 				$container->get( ProductDeliveryRuleResolver::class ),
 				$container->get( ProductDeliveryOptionsBuilder::class ),
 				$container->get( ProductDeliverySelectionValidator::class )
+			)
+		);
+
+		$this->container->singleton(
+			CartDeliverySelectionRevalidator::class,
+			static fn ( ServiceContainer $container ): CartDeliverySelectionRevalidator => new CartDeliverySelectionRevalidator(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( ProductDeliverySelectionValidator::class )
+			)
+		);
+
+		$this->container->singleton(
+			CheckoutDeliverySelectionValidator::class,
+			static fn ( ServiceContainer $container ): CheckoutDeliverySelectionValidator => new CheckoutDeliverySelectionValidator(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( CartDeliverySelectionCapture::class ),
+				$container->get( CartDeliverySelectionRevalidator::class )
 			)
 		);
 

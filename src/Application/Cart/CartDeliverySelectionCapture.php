@@ -44,6 +44,7 @@ final class CartDeliverySelectionCapture {
 
 		add_filter( 'woocommerce_add_to_cart_validation', [ $this, 'validate_add_to_cart' ], 10, 5 );
 		add_filter( 'woocommerce_add_cart_item_data', [ $this, 'add_cart_item_data' ], 10, 3 );
+		add_filter( 'woocommerce_get_cart_item_from_session', [ $this, 'restore_cart_item_from_session' ], 10, 3 );
 		add_filter( 'woocommerce_get_item_data', [ $this, 'display_cart_item_data' ], 10, 2 );
 	}
 
@@ -144,11 +145,43 @@ final class CartDeliverySelectionCapture {
 			return $cart_item_data;
 		}
 
-		$cart_item_data[ self::CART_SELECTION_KEY ]  = $result->intent;
-		$cart_item_data[ self::CART_SUMMARY_KEY ]    = self::buildPublicSummary( $result->matched_option );
-		$cart_item_data[ self::CART_HASH_KEY ]       = self::buildSelectionHash( $result->intent );
+		$summary = self::buildPublicSummary( $result->matched_option );
+
+		if ( [] === $summary ) {
+			return $cart_item_data;
+		}
+
+		$cart_item_data[ self::CART_SELECTION_KEY ] = $result->intent;
+		$cart_item_data[ self::CART_SUMMARY_KEY ]   = $summary;
+		$cart_item_data[ self::CART_HASH_KEY ]      = CartDeliverySelectionFingerprint::fromIntent( $result->intent );
 
 		return $cart_item_data;
+	}
+
+	/**
+	 * @param array<string, mixed> $cart_item
+	 * @param array<string, mixed> $values
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function restore_cart_item_from_session( array $cart_item, array $values, string $cart_item_key ): array {
+		unset( $cart_item_key );
+
+		if ( ! $this->is_capture_enabled() ) {
+			return $cart_item;
+		}
+
+		$restored = CartDeliverySelectionSessionData::restoreFromSession( $values );
+
+		if ( null === $restored ) {
+			return CartDeliverySelectionSessionData::stripSelectionKeys( $cart_item );
+		}
+
+		$cart_item[ self::CART_SELECTION_KEY ] = $restored['intent'];
+		$cart_item[ self::CART_SUMMARY_KEY ]   = $restored['summary'];
+		$cart_item[ self::CART_HASH_KEY ]      = $restored['hash'];
+
+		return $cart_item;
 	}
 
 	/**
@@ -162,18 +195,24 @@ final class CartDeliverySelectionCapture {
 			return $item_data;
 		}
 
-		$summary = $cart_item[ self::CART_SUMMARY_KEY ] ?? null;
+		$summary = CartDeliverySelectionSessionData::normalizeSummary(
+			$cart_item[ self::CART_SUMMARY_KEY ] ?? null
+		);
 
-		if ( ! is_array( $summary ) ) {
+		if ( null === $summary ) {
 			return $item_data;
 		}
 
 		$lines = self::formatPublicSummaryLines( $summary );
 
+		if ( [] === $lines ) {
+			return $item_data;
+		}
+
 		foreach ( $lines as $line ) {
 			$item_data[] = [
-				'key'   => __( 'Delivery', 'cetech-woocommerce-delivery-engine' ),
-				'value' => $line,
+				'key'   => esc_html__( 'Delivery', 'cetech-woocommerce-delivery-engine' ),
+				'value' => esc_html( $line ),
 			];
 		}
 
@@ -245,7 +284,7 @@ final class CartDeliverySelectionCapture {
 	 * @return array<string, string|null>
 	 */
 	public static function buildPublicSummary( array $matched_option ): array {
-		return [
+		$raw = [
 			'fulfilment_availability_label' => isset( $matched_option['fulfilment_availability_label'] )
 				? (string) $matched_option['fulfilment_availability_label']
 				: null,
@@ -259,6 +298,8 @@ final class CartDeliverySelectionCapture {
 				? (string) $matched_option['estimate_text']
 				: null,
 		];
+
+		return CartDeliverySelectionSessionData::normalizeSummary( $raw ) ?? [];
 	}
 
 	/**
@@ -297,17 +338,7 @@ final class CartDeliverySelectionCapture {
 	 * @param array<string, mixed> $intent
 	 */
 	public static function buildSelectionHash( array $intent ): string {
-		$parts = [
-			(string) ( $intent['product_id'] ?? '' ),
-			(string) ( $intent['variation_id'] ?? '' ),
-			(string) ( $intent['display_key'] ?? '' ),
-			(string) ( $intent['fulfilment_availability'] ?? '' ),
-			(string) ( $intent['fulfilment_choice'] ?? '' ),
-			(string) ( $intent['delivery_offer_id'] ?? '' ),
-			(string) ( $intent['rule_id'] ?? '' ),
-		];
-
-		return hash( 'sha256', implode( '|', $parts ) );
+		return CartDeliverySelectionFingerprint::fromIntent( $intent );
 	}
 
 	private function read_submitted_display_key(): string {
@@ -320,6 +351,13 @@ final class CartDeliverySelectionCapture {
 		$raw = wp_unslash( (string) $_POST[ self::POST_FIELD ] );
 
 		return ProductDeliveryOptionsBuilder::normalizeDisplayKey( $raw );
+	}
+
+	/**
+	 * Capture applies to simple products only in Phase 2E1 (variable forms deferred).
+	 */
+	public function should_apply_capture_to_line( int $product_id, int $variation_id ): bool {
+		return $this->should_apply_capture( $product_id, $variation_id );
 	}
 
 	/**
