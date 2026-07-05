@@ -42,6 +42,17 @@ function Invoke-Git {
     return $output
 }
 
+function Ensure-CompressionAssembliesLoaded {
+    foreach ($assemblyName in @('System.IO.Compression', 'System.IO.Compression.FileSystem')) {
+        $alreadyLoaded = [System.AppDomain]::CurrentDomain.GetAssemblies() |
+            Where-Object { $_.GetName().Name -eq $assemblyName }
+
+        if (-not $alreadyLoaded) {
+            Add-Type -AssemblyName $assemblyName
+        }
+    }
+}
+
 Write-Step "Verifying Git repository at $RepoRoot"
 if (-not (Test-Path (Join-Path $RepoRoot '.git'))) {
     throw 'Not a Git repository.'
@@ -177,6 +188,8 @@ function New-ForwardSlashPluginZip {
         [string]$Slug
     )
 
+    Ensure-CompressionAssembliesLoaded
+
     if (Test-Path $DestinationZipPath) {
         Remove-Item -LiteralPath $DestinationZipPath -Force
     }
@@ -230,6 +243,8 @@ function Test-PluginZipStructure {
         [string]$Slug,
         [string]$MainFile
     )
+
+    Ensure-CompressionAssembliesLoaded
 
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPathToInspect)
     try {
@@ -287,7 +302,7 @@ function Test-PluginZipStructure {
 }
 
 Write-Step "Creating ZIP: $ZipPath"
-Add-Type -AssemblyName System.IO.Compression.FileSystem
+Ensure-CompressionAssembliesLoaded
 New-ForwardSlashPluginZip -DestinationZipPath $ZipPath -SourcePluginDir $StagePluginDir -Slug $PluginSlug
 
 Write-Step 'Generating SHA256 checksum'
