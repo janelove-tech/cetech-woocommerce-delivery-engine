@@ -11,6 +11,8 @@ use CetechDeliveryEngine\Core\Requirements;
 use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
 use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
+use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
+use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
 
 /**
@@ -26,7 +28,9 @@ final class SystemStatusPage {
 		private Requirements $requirements,
 		private FeatureFlags $feature_flags,
 		private IntegrationRegistry $integration_registry,
-		private Capabilities $capabilities
+		private Capabilities $capabilities,
+		private LogisticsProfileRepositoryInterface $logistics_profile_repository,
+		private DeliveryOfferRepositoryInterface $delivery_offer_repository
 	) {
 	}
 
@@ -73,7 +77,9 @@ final class SystemStatusPage {
 
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Delivery Engine — System Status', 'cetech-woocommerce-delivery-engine' ) . '</h1>';
-		echo '<p>' . esc_html__( 'Read-only system status. Configuration tables and repositories are available; admin CRUD screens are not yet implemented.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
+		echo '<p>' . esc_html__( 'Read-only system status and configuration health summary.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
+
+		$this->render_configuration_warnings();
 
 		$this->render_table(
 			__( 'Environment', 'cetech-woocommerce-delivery-engine' ),
@@ -91,6 +97,14 @@ final class SystemStatusPage {
 				__( 'Missing configuration tables', 'cetech-woocommerce-delivery-engine' ) => $this->format_missing_tables(),
 				__( 'Last migration status', 'cetech-woocommerce-delivery-engine' ) => $this->format_migration_status(),
 				__( 'Composer autoload present', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( is_readable( CETECH_DE_PATH . 'vendor/autoload.php' ) ),
+			]
+		);
+
+		$this->render_table(
+			__( 'Configuration records', 'cetech-woocommerce-delivery-engine' ),
+			[
+				__( 'Logistics profiles', 'cetech-woocommerce-delivery-engine' ) => (string) $this->logistics_profile_repository->count_all(),
+				__( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ) => (string) $this->delivery_offer_repository->count_all(),
 			]
 		);
 
@@ -180,6 +194,27 @@ final class SystemStatusPage {
 		return $value
 			? __( 'Yes', 'cetech-woocommerce-delivery-engine' )
 			: __( 'No', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function render_configuration_warnings(): void {
+		$profile_count = $this->logistics_profile_repository->count_all();
+		$offer_count   = $this->delivery_offer_repository->count_all();
+
+		if ( $profile_count > 0 && $offer_count > 0 ) {
+			return;
+		}
+
+		echo '<div class="notice notice-warning"><p>';
+
+		if ( 0 === $profile_count ) {
+			echo esc_html__( 'Warning: no logistics profiles are configured yet.', 'cetech-woocommerce-delivery-engine' ) . ' ';
+		}
+
+		if ( 0 === $offer_count ) {
+			echo esc_html__( 'Warning: no delivery offers are configured yet.', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		echo '</p></div>';
 	}
 
 	private function format_missing_tables(): string {

@@ -30,8 +30,15 @@ use CetechDeliveryEngine\Infrastructure\Persistence\WpdbPickupLocationRepository
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbRateCardRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbSupplierRepository;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
+use CetechDeliveryEngine\Presentation\Admin\AdminActionHandler;
 use CetechDeliveryEngine\Presentation\Admin\AdminMenu;
+use CetechDeliveryEngine\Presentation\Admin\AdminNoticeService;
+use CetechDeliveryEngine\Presentation\Admin\ConfigurationAuditLogger;
+use CetechDeliveryEngine\Presentation\Admin\DeliveryOffersPage;
+use CetechDeliveryEngine\Presentation\Admin\LogisticsProfilesPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
+use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\LogisticsProfileValidator;
 use CetechDeliveryEngine\Support\AdminNotice;
 use CetechDeliveryEngine\Support\Logger;
 
@@ -183,19 +190,73 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			AdminNoticeService::class,
+			static fn (): AdminNoticeService => new AdminNoticeService()
+		);
+
+		$this->container->singleton(
+			AdminActionHandler::class,
+			static fn ( ServiceContainer $container ): AdminActionHandler => new AdminActionHandler(
+				$container->get( AdminNoticeService::class )
+			)
+		);
+
+		$this->container->singleton(
+			ConfigurationAuditLogger::class,
+			static fn ( ServiceContainer $container ): ConfigurationAuditLogger => new ConfigurationAuditLogger(
+				$container->get( AuditLogRepositoryInterface::class ),
+				$container->get( Logger::class )
+			)
+		);
+
+		$this->container->singleton(
+			LogisticsProfileValidator::class,
+			static fn (): LogisticsProfileValidator => new LogisticsProfileValidator()
+		);
+
+		$this->container->singleton(
+			DeliveryOfferValidator::class,
+			static fn (): DeliveryOfferValidator => new DeliveryOfferValidator()
+		);
+
+		$this->container->singleton(
+			LogisticsProfilesPage::class,
+			static fn ( ServiceContainer $container ): LogisticsProfilesPage => new LogisticsProfilesPage(
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( LogisticsProfileValidator::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
+			DeliveryOffersPage::class,
+			static fn ( ServiceContainer $container ): DeliveryOffersPage => new DeliveryOffersPage(
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( DeliveryOfferValidator::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
 			SystemStatusPage::class,
 			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
 				$container->get( Requirements::class ),
 				$container->get( FeatureFlags::class ),
 				$container->get( IntegrationRegistry::class ),
-				$container->get( Capabilities::class )
+				$container->get( Capabilities::class ),
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class )
 			)
 		);
 
 		$this->container->singleton(
 			AdminMenu::class,
 			static fn ( ServiceContainer $container ): AdminMenu => new AdminMenu(
-				$container->get( SystemStatusPage::class )
+				$container->get( SystemStatusPage::class ),
+				$container->get( LogisticsProfilesPage::class ),
+				$container->get( DeliveryOffersPage::class )
 			)
 		);
 	}
