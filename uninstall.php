@@ -5,7 +5,7 @@
  * Safety policy:
  * - By default, uninstall does NOT delete plugin data.
  * - Data is removed only when cetech_de_delete_data_on_uninstall is explicitly true (1).
- * - Phase 1B has no delivery-domain database tables; only options and capabilities are removed.
+ * - Phase 2A: when delete-data is enabled, configuration-domain tables are dropped.
  * - This file must not fatal when WooCommerce is absent.
  *
  * @package CetechDeliveryEngine
@@ -90,4 +90,27 @@ foreach ( $feature_flag_options as $flag ) {
 }
 
 delete_option( 'cetech_de_db_version' );
+delete_option( 'cetech_de_last_migration_status' );
 delete_option( 'cetech_de_delete_data_on_uninstall' );
+
+global $wpdb;
+
+$table_prefix = $wpdb->prefix . 'delivery_engine_';
+$table_suffixes = [
+	'delivery_offers',
+	'destination_zones',
+	'destination_rules',
+	'logistics_profiles',
+	'suppliers',
+	'origins',
+	'pickup_locations',
+	'rate_cards',
+	'rate_card_rules',
+	'audit_log',
+];
+
+foreach ( $table_suffixes as $suffix ) {
+	$table = $table_prefix . $suffix;
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$wpdb->query( "DROP TABLE IF EXISTS `{$table}`" );
+}

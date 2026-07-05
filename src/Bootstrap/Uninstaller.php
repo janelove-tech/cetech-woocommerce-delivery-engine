@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Bootstrap;
 
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
+use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
+use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
 
 /**
- * Removes plugin options and capabilities when delete-data uninstall is enabled.
+ * Removes plugin options, capabilities, and configuration tables when delete-data uninstall is enabled.
  */
 final class Uninstaller {
 
@@ -21,8 +23,18 @@ final class Uninstaller {
 			return;
 		}
 
+		self::drop_configuration_tables();
 		self::remove_capabilities();
 		self::remove_options();
+	}
+
+	private static function drop_configuration_tables(): void {
+		global $wpdb;
+
+		foreach ( ConfigurationTables::all() as $table ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "DROP TABLE IF EXISTS `{$table}`" );
+		}
 	}
 
 	private static function remove_capabilities(): void {
@@ -38,6 +50,7 @@ final class Uninstaller {
 		}
 
 		delete_option( SchemaVersion::OPTION_NAME );
+		delete_option( MigrationStatus::OPTION_NAME );
 		delete_option( self::DELETE_DATA_OPTION );
 	}
 }

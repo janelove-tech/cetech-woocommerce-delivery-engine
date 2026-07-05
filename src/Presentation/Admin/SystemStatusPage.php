@@ -8,7 +8,9 @@ use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
 use CetechDeliveryEngine\Core\Requirements;
+use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
+use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
 
 /**
@@ -71,7 +73,7 @@ final class SystemStatusPage {
 
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Delivery Engine — System Status', 'cetech-woocommerce-delivery-engine' ) . '</h1>';
-		echo '<p>' . esc_html__( 'Read-only foundation status. No delivery configuration is available in this phase.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
+		echo '<p>' . esc_html__( 'Read-only system status. Configuration tables and repositories are available; admin CRUD screens are not yet implemented.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
 
 		$this->render_table(
 			__( 'Environment', 'cetech-woocommerce-delivery-engine' ),
@@ -82,7 +84,12 @@ final class SystemStatusPage {
 				__( 'WooCommerce active', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $this->requirements->is_woocommerce_active() ),
 				__( 'WooCommerce version', 'cetech-woocommerce-delivery-engine' ) => $this->woocommerce_version(),
 				__( 'HPOS compatibility declaration attempted', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( FeaturesCompatibility::hpos_declaration_attempted() ),
-				__( 'Schema version', 'cetech-woocommerce-delivery-engine' ) => SchemaVersion::get(),
+				__( 'Schema up to date', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( SchemaVersion::is_up_to_date() ),
+				__( 'Target schema version', 'cetech-woocommerce-delivery-engine' ) => SchemaVersion::target(),
+				__( 'Installed schema version', 'cetech-woocommerce-delivery-engine' ) => SchemaVersion::get(),
+				__( 'Configuration tables present', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( ConfigurationTables::all_exist() ),
+				__( 'Missing configuration tables', 'cetech-woocommerce-delivery-engine' ) => $this->format_missing_tables(),
+				__( 'Last migration status', 'cetech-woocommerce-delivery-engine' ) => $this->format_migration_status(),
 				__( 'Composer autoload present', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( is_readable( CETECH_DE_PATH . 'vendor/autoload.php' ) ),
 			]
 		);
@@ -173,6 +180,68 @@ final class SystemStatusPage {
 		return $value
 			? __( 'Yes', 'cetech-woocommerce-delivery-engine' )
 			: __( 'No', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function format_missing_tables(): string {
+		$missing = ConfigurationTables::missing();
+
+		if ( [] === $missing ) {
+			return __( 'None', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return implode( ', ', $missing );
+	}
+
+	private function format_migration_status(): string {
+		$status = MigrationStatus::get();
+
+		if ( null === $status ) {
+			return __( 'N/A', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		$parts = [];
+
+		if ( isset( $status['status'] ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: migration outcome (success or failed) */
+				__( 'Status: %s', 'cetech-woocommerce-delivery-engine' ),
+				(string) $status['status']
+			);
+		}
+
+		if ( isset( $status['migration_id'] ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: migration identifier */
+				__( 'Migration: %s', 'cetech-woocommerce-delivery-engine' ),
+				(string) $status['migration_id']
+			);
+		}
+
+		if ( isset( $status['to_version'] ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: schema version number */
+				__( 'Version: %s', 'cetech-woocommerce-delivery-engine' ),
+				(string) $status['to_version']
+			);
+		}
+
+		if ( isset( $status['recorded_at'] ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: UTC timestamp */
+				__( 'Recorded: %s UTC', 'cetech-woocommerce-delivery-engine' ),
+				(string) $status['recorded_at']
+			);
+		}
+
+		if ( isset( $status['error'] ) && '' !== (string) $status['error'] ) {
+			$parts[] = sprintf(
+				/* translators: %s: error message */
+				__( 'Error: %s', 'cetech-woocommerce-delivery-engine' ),
+				(string) $status['error']
+			);
+		}
+
+		return implode( ' | ', $parts );
 	}
 
 	private function woocommerce_version(): string {

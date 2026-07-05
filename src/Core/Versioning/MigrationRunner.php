@@ -74,6 +74,15 @@ final class MigrationRunner {
 			$migration->up();
 			SchemaVersion::set( $to_version );
 
+			MigrationStatus::record(
+				[
+					'status'       => 'success',
+					'migration_id' => $migration_id,
+					'from_version' => $from_version,
+					'to_version'   => $to_version,
+				]
+			);
+
 			$this->logger->info(
 				'Migration applied successfully.',
 				[
@@ -82,6 +91,16 @@ final class MigrationRunner {
 				]
 			);
 		} catch ( \Throwable $exception ) {
+			MigrationStatus::record(
+				[
+					'status'       => 'failed',
+					'migration_id' => $migration_id,
+					'from_version' => $from_version,
+					'to_version'   => $to_version,
+					'error'        => $exception->getMessage(),
+				]
+			);
+
 			$this->logger->error(
 				'Migration failed.',
 				[

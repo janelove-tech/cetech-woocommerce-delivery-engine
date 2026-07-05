@@ -12,15 +12,28 @@ final class SchemaVersion {
 	public const OPTION_NAME = 'cetech_de_db_version';
 
 	/**
-	 * Foundation schema version. No delivery-domain tables in Phase 1B.
+	 * Target schema version for the current plugin release (Phase 2A configuration domain).
 	 */
-	public const CURRENT = '0';
+	public const TARGET = '1';
+
+	/**
+	 * Legacy foundation schema version before configuration tables existed.
+	 */
+	public const FOUNDATION = '0';
+
+	public static function target(): string {
+		return self::TARGET;
+	}
+
+	public static function is_up_to_date(): bool {
+		return version_compare( self::get(), self::TARGET, '>=' );
+	}
 
 	public static function get(): string {
 		$stored = get_option( self::OPTION_NAME, null );
 
 		if ( null === $stored ) {
-			return self::CURRENT;
+			return self::FOUNDATION;
 		}
 
 		return (string) $stored;
@@ -32,7 +45,7 @@ final class SchemaVersion {
 
 	public static function ensure_initialized(): void {
 		if ( null === get_option( self::OPTION_NAME, null ) ) {
-			add_option( self::OPTION_NAME, self::CURRENT, '', false );
+			add_option( self::OPTION_NAME, self::FOUNDATION, '', false );
 		}
 	}
 }

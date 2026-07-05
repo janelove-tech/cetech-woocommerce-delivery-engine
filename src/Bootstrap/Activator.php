@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Bootstrap;
 
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
+use CetechDeliveryEngine\Core\Versioning\MigrationDiscovery;
 use CetechDeliveryEngine\Core\Versioning\MigrationRunner;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
 use CetechDeliveryEngine\Support\Logger;
@@ -37,7 +38,12 @@ final class Activator {
 		SchemaVersion::ensure_initialized();
 
 		$migration_runner = new MigrationRunner( new Logger() );
-		$migration_runner->set_migrations( [] );
+		$migration_runner->set_migrations(
+			MigrationDiscovery::discover(
+				CETECH_DE_PATH . 'database/migrations',
+				new Logger()
+			)
+		);
 		$migration_runner->run();
 
 		set_transient( 'cetech_de_activation_notice', 1, MINUTE_IN_SECONDS );

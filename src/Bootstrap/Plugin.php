@@ -9,7 +9,24 @@ use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
 use CetechDeliveryEngine\Core\Health\HealthCheckRegistry;
 use CetechDeliveryEngine\Core\Requirements;
+use CetechDeliveryEngine\Core\Versioning\MigrationDiscovery;
 use CetechDeliveryEngine\Core\Versioning\MigrationRunner;
+use CetechDeliveryEngine\Domain\Audit\AuditLogRepositoryInterface;
+use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
+use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
+use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
+use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
+use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
+use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbAuditLogRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDeliveryOfferRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDestinationZoneRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbLogisticsProfileRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbOriginRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbPickupLocationRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbRateCardRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbSupplierRepository;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
 use CetechDeliveryEngine\Presentation\Admin\AdminMenu;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
@@ -141,11 +158,18 @@ final class Plugin {
 			MigrationRunner::class,
 			static function ( ServiceContainer $container ): MigrationRunner {
 				$runner = new MigrationRunner( $container->get( Logger::class ) );
-				$runner->set_migrations( [] );
+				$runner->set_migrations(
+					MigrationDiscovery::discover(
+						CETECH_DE_PATH . 'database/migrations',
+						$container->get( Logger::class )
+					)
+				);
 
 				return $runner;
 			}
 		);
+
+		$this->register_repository_bindings();
 
 		$this->container->singleton(
 			HealthCheckRegistry::class,
@@ -171,6 +195,48 @@ final class Plugin {
 			static fn ( ServiceContainer $container ): AdminMenu => new AdminMenu(
 				$container->get( SystemStatusPage::class )
 			)
+		);
+	}
+
+	private function register_repository_bindings(): void {
+		$this->container->singleton(
+			DeliveryOfferRepositoryInterface::class,
+			static fn (): DeliveryOfferRepositoryInterface => new WpdbDeliveryOfferRepository()
+		);
+
+		$this->container->singleton(
+			DestinationZoneRepositoryInterface::class,
+			static fn (): DestinationZoneRepositoryInterface => new WpdbDestinationZoneRepository()
+		);
+
+		$this->container->singleton(
+			LogisticsProfileRepositoryInterface::class,
+			static fn (): LogisticsProfileRepositoryInterface => new WpdbLogisticsProfileRepository()
+		);
+
+		$this->container->singleton(
+			SupplierRepositoryInterface::class,
+			static fn (): SupplierRepositoryInterface => new WpdbSupplierRepository()
+		);
+
+		$this->container->singleton(
+			OriginRepositoryInterface::class,
+			static fn (): OriginRepositoryInterface => new WpdbOriginRepository()
+		);
+
+		$this->container->singleton(
+			PickupLocationRepositoryInterface::class,
+			static fn (): PickupLocationRepositoryInterface => new WpdbPickupLocationRepository()
+		);
+
+		$this->container->singleton(
+			RateCardRepositoryInterface::class,
+			static fn (): RateCardRepositoryInterface => new WpdbRateCardRepository()
+		);
+
+		$this->container->singleton(
+			AuditLogRepositoryInterface::class,
+			static fn (): AuditLogRepositoryInterface => new WpdbAuditLogRepository()
 		);
 	}
 
