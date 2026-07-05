@@ -8,7 +8,10 @@ use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
+use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
@@ -1677,6 +1680,39 @@ final class ConfigurationHealthChecker {
 				'order_snapshot_enabled_woocommerce_unavailable',
 				__( 'Order snapshot enabled without WooCommerce', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Order delivery snapshot persistence is enabled but WooCommerce is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotReader::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_reader_missing',
+				__( 'Order snapshot: reader service missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but OrderDeliverySnapshotReader is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotAdminDisplay::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_admin_display_missing',
+				__( 'Order snapshot: admin display service missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but OrderDeliverySnapshotAdminDisplay is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotIntegrity::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'order_snapshot_enabled_integrity_checker_missing',
+				__( 'Order snapshot: integrity checker missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order delivery snapshot persistence is enabled but OrderDeliverySnapshotIntegrity is not available.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
 		}

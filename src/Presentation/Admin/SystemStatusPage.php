@@ -9,7 +9,10 @@ use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshot;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
+use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
 use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
@@ -205,6 +208,10 @@ final class SystemStatusPage {
 				__( 'Order snapshot persistence registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $snapshot_runtime_active && class_exists( OrderDeliverySnapshotPersister::class ) ),
 				__( 'Snapshot mode', 'cetech-woocommerce-delivery-engine' ) => $this->describe_snapshot_mode( $snapshot_flag_enabled, $snapshot_runtime_active ),
 				__( 'Order snapshot', 'cetech-woocommerce-delivery-engine' ) => $this->describe_order_snapshot_status( $snapshot_runtime_active ),
+				__( 'Order snapshot admin display', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( OrderDeliverySnapshotAdminDisplay::class ) && function_exists( 'WC' ) ),
+				__( 'Snapshot reader registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( OrderDeliverySnapshotReader::class ) ),
+				__( 'Snapshot integrity checker registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( OrderDeliverySnapshotIntegrity::class ) ),
+				__( 'Snapshot display mode', 'cetech-woocommerce-delivery-engine' ) => __( 'Read-only admin only', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipment creation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Tracking timeline', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Public order delivery page', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),

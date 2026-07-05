@@ -16,7 +16,9 @@ use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotBuilder;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
 use CetechDeliveryEngine\Application\Shipping\SelectedOfferShippingIntegration;
 use CetechDeliveryEngine\Application\Shipping\SelectedOfferShippingRateCalculator;
 use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
@@ -58,6 +60,7 @@ use CetechDeliveryEngine\Presentation\Admin\DestinationZoneTestMatcher;
 use CetechDeliveryEngine\Presentation\Admin\DestinationZonesPage;
 use CetechDeliveryEngine\Presentation\Admin\LogisticsProfilesPage;
 use CetechDeliveryEngine\Presentation\Admin\PickupLocationsPage;
+use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
 use CetechDeliveryEngine\Presentation\Admin\ProductDeliveryRulesPage;
 use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
@@ -163,6 +166,10 @@ final class Plugin {
 		$this->container->get( CheckoutDeliverySelectionValidator::class )->register();
 		$this->container->get( SelectedOfferShippingIntegration::class )->register();
 		$this->container->get( OrderDeliverySnapshotPersister::class )->register();
+
+		if ( is_admin() ) {
+			$this->container->get( OrderDeliverySnapshotAdminDisplay::class )->register();
+		}
 
 		$this->maybe_show_activation_notice();
 	}
@@ -479,6 +486,24 @@ final class Plugin {
 				$container->get( OrderDeliverySnapshotGate::class ),
 				$container->get( OrderDeliverySnapshotBuilder::class ),
 				$container->get( Logger::class )
+			)
+		);
+
+		$this->container->singleton(
+			OrderDeliverySnapshotReader::class,
+			static fn (): OrderDeliverySnapshotReader => new OrderDeliverySnapshotReader()
+		);
+
+		$this->container->singleton(
+			OrderDeliverySnapshotIntegrity::class,
+			static fn (): OrderDeliverySnapshotIntegrity => new OrderDeliverySnapshotIntegrity()
+		);
+
+		$this->container->singleton(
+			OrderDeliverySnapshotAdminDisplay::class,
+			static fn ( ServiceContainer $container ): OrderDeliverySnapshotAdminDisplay => new OrderDeliverySnapshotAdminDisplay(
+				$container->get( OrderDeliverySnapshotReader::class ),
+				$container->get( OrderDeliverySnapshotIntegrity::class )
 			)
 		);
 
