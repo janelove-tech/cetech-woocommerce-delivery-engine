@@ -45,14 +45,55 @@ final class AdminOperationsDashboard {
 		echo '<div class="cetech-de-dashboard">';
 
 		$this->render_header();
-		$this->render_readiness_cards( $state );
-		$this->render_checklist( $state );
-		$this->render_quick_actions();
+		$this->render_section(
+			__( 'Delivery readiness', 'cetech-woocommerce-delivery-engine' ),
+			__( 'A quick look at whether your delivery setup is ready for customers.', 'cetech-woocommerce-delivery-engine' ),
+			function () use ( $state ): void {
+				$this->render_readiness_cards( $state );
+			}
+		);
+		$this->render_section(
+			__( 'Setup checklist', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Complete these steps to get delivery pricing working at checkout.', 'cetech-woocommerce-delivery-engine' ),
+			function () use ( $state ): void {
+				$this->render_checklist( $state );
+			}
+		);
+		$this->render_section(
+			__( "Today's delivery controls", 'cetech-woocommerce-delivery-engine' ),
+			__( 'Common tasks your team can open with one click.', 'cetech-woocommerce-delivery-engine' ),
+			function (): void {
+				$this->render_quick_actions();
+			}
+		);
 		$this->render_warnings( $state );
-		$this->render_summary( $state );
+		$this->render_section(
+			__( 'At a glance', 'cetech-woocommerce-delivery-engine' ),
+			null,
+			function () use ( $state ): void {
+				$this->render_summary( $state );
+			}
+		);
 		$this->render_help();
 
 		echo '</div>';
+	}
+
+	/**
+	 * @param callable(): void $content
+	 */
+	private function render_section( string $title, ?string $description, callable $content ): void {
+		echo '<section class="cetech-de-section">';
+		echo '<div class="cetech-de-section-head">';
+		echo '<h2 class="cetech-de-section-title">' . esc_html( $title ) . '</h2>';
+
+		if ( null !== $description && '' !== $description ) {
+			echo '<p class="cetech-de-section-desc">' . esc_html( $description ) . '</p>';
+		}
+
+		echo '</div>';
+		$content();
+		echo '</section>';
 	}
 
 	/**
@@ -104,8 +145,9 @@ final class AdminOperationsDashboard {
 	}
 
 	private function render_header(): void {
-		echo '<div class="cetech-de-dashboard-header">';
+		echo '<header class="cetech-de-dashboard-header">';
 		echo '<div class="cetech-de-dashboard-header-text">';
+		echo '<p class="cetech-de-dashboard-eyebrow">' . esc_html__( 'Delivery operations', 'cetech-woocommerce-delivery-engine' ) . '</p>';
 		echo '<h1 class="cetech-de-dashboard-title">' . esc_html__( 'CETECH Delivery Engine', 'cetech-woocommerce-delivery-engine' ) . '</h1>';
 		echo '<p class="cetech-de-dashboard-subtitle">' . esc_html__(
 			'Manage delivery zones, offers, and rate cards for WooCommerce orders.',
@@ -113,6 +155,7 @@ final class AdminOperationsDashboard {
 		) . '</p>';
 		echo '</div>';
 		echo '<div class="cetech-de-dashboard-header-actions">';
+		echo '<div class="cetech-de-button-group cetech-de-button-group--primary">';
 
 		$this->render_button(
 			__( 'Manage Rate Cards', 'cetech-woocommerce-delivery-engine' ),
@@ -127,21 +170,21 @@ final class AdminOperationsDashboard {
 			__( 'Manage Delivery Zones', 'cetech-woocommerce-delivery-engine' ),
 			AdminPageRenderer::list_url( DestinationZonesPage::SLUG )
 		);
+
+		echo '</div><div class="cetech-de-button-group cetech-de-button-group--secondary">';
 		$this->render_button(
 			__( 'View Settings', 'cetech-woocommerce-delivery-engine' ),
 			'#cetech-de-advanced-details',
-			'secondary'
+			'link'
 		);
-
-		echo '</div></div>';
+		echo '</div></div></header>';
 	}
 
 	/**
 	 * @param array<string, mixed> $state
 	 */
 	private function render_readiness_cards( array $state ): void {
-		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'Delivery readiness', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
-		echo '<div class="cetech-de-card-grid">';
+		echo '<div class="cetech-de-card-grid cetech-de-readiness-grid">';
 
 		$this->render_readiness_card(
 			__( 'Delivery Zones', 'cetech-woocommerce-delivery-engine' ),
@@ -186,10 +229,11 @@ final class AdminOperationsDashboard {
 	 * @param array<string, mixed> $state
 	 */
 	private function render_checklist( array $state ): void {
-		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'Setup checklist', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
 		echo '<div class="cetech-de-checklist">';
+		$step = 1;
 
-		$this->render_checklist_item(
+		$step = $this->render_checklist_item(
+			$step,
 			__( 'Create at least one Delivery Zone', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Zones group the places you deliver to, such as a city or region.', 'cetech-woocommerce-delivery-engine' ),
 			$state['zone_count'] > 0,
@@ -197,7 +241,8 @@ final class AdminOperationsDashboard {
 			__( 'Add a zone', 'cetech-woocommerce-delivery-engine' )
 		);
 
-		$this->render_checklist_item(
+		$step = $this->render_checklist_item(
+			$step,
 			__( 'Create at least one Delivery Offer', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Offers describe the delivery service your customers choose.', 'cetech-woocommerce-delivery-engine' ),
 			$state['offer_count'] > 0,
@@ -205,7 +250,8 @@ final class AdminOperationsDashboard {
 			__( 'Add an offer', 'cetech-woocommerce-delivery-engine' )
 		);
 
-		$this->render_checklist_item(
+		$step = $this->render_checklist_item(
+			$step,
 			__( 'Create at least one Rate Card', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Rate cards set the price for each zone and offer combination.', 'cetech-woocommerce-delivery-engine' ),
 			$state['active_rate_cards'] > 0,
@@ -213,7 +259,8 @@ final class AdminOperationsDashboard {
 			__( 'Add a rate card', 'cetech-woocommerce-delivery-engine' )
 		);
 
-		$this->render_checklist_item(
+		$step = $this->render_checklist_item(
+			$step,
 			__( 'Enable delivery at checkout', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Confirm WooCommerce shipping is configured and Delivery Engine checkout features are turned on.', 'cetech-woocommerce-delivery-engine' ),
 			$state['checkout_runtime'] && $state['woocommerce_active'],
@@ -222,6 +269,7 @@ final class AdminOperationsDashboard {
 		);
 
 		$this->render_checklist_item(
+			$step,
 			__( 'Test checkout with a sample product', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Add a product to the cart, enter a delivery address, and confirm the delivery fee appears.', 'cetech-woocommerce-delivery-engine' ),
 			false,
@@ -234,7 +282,6 @@ final class AdminOperationsDashboard {
 	}
 
 	private function render_quick_actions(): void {
-		echo '<h2 class="cetech-de-section-title">' . esc_html__( "Today's delivery controls", 'cetech-woocommerce-delivery-engine' ) . '</h2>';
 		echo '<div class="cetech-de-card-grid cetech-de-quick-actions">';
 
 		$this->render_action_card(
@@ -276,30 +323,51 @@ final class AdminOperationsDashboard {
 	private function render_warnings( array $state ): void {
 		$warnings = $this->collect_warnings( $state );
 
+		echo '<section class="cetech-de-section cetech-de-section--warnings">';
+		echo '<div class="cetech-de-section-head">';
+		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'Needs your attention', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+
 		if ( [] === $warnings ) {
+			echo '<p class="cetech-de-section-desc">' . esc_html__(
+				'No urgent delivery setup issues were found.',
+				'cetech-woocommerce-delivery-engine'
+			) . '</p>';
+		}
+
+		echo '</div>';
+
+		if ( [] === $warnings ) {
+			echo '<div class="cetech-de-empty-state cetech-de-empty-state--success">';
+			echo '<p class="cetech-de-empty-state-title">' . esc_html__( 'You are all set for now', 'cetech-woocommerce-delivery-engine' ) . '</p>';
+			echo '<p class="cetech-de-empty-state-text">' . esc_html__(
+				'Your core delivery setup looks healthy. Continue with the checklist or test checkout when you are ready.',
+				'cetech-woocommerce-delivery-engine'
+			) . '</p>';
+			echo '</div></section>';
 			return;
 		}
 
-		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'Needs your attention', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
 		echo '<div class="cetech-de-warnings">';
 
 		foreach ( $warnings as $warning ) {
 			echo '<div class="cetech-de-warning-card">';
+			echo '<div class="cetech-de-warning-icon" aria-hidden="true">!</div>';
+			echo '<div class="cetech-de-warning-body">';
 			echo '<p class="cetech-de-warning-title">' . esc_html( (string) $warning['title'] ) . '</p>';
 			echo '<p class="cetech-de-warning-message">' . esc_html( (string) $warning['message'] ) . '</p>';
 
 			if ( ! empty( $warning['action_label'] ) && ! empty( $warning['action_url'] ) ) {
 				printf(
-					'<p><a class="button button-secondary" href="%1$s">%2$s</a></p>',
+					'<p class="cetech-de-warning-action"><a class="button button-secondary" href="%1$s">%2$s</a></p>',
 					esc_url( (string) $warning['action_url'] ),
 					esc_html( (string) $warning['action_label'] )
 				);
 			}
 
-			echo '</div>';
+			echo '</div></div>';
 		}
 
-		echo '</div>';
+		echo '</div></section>';
 	}
 
 	/**
@@ -391,20 +459,29 @@ final class AdminOperationsDashboard {
 	 * @param array<string, mixed> $state
 	 */
 	private function render_summary( array $state ): void {
-		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'At a glance', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
 		echo '<div class="cetech-de-summary-grid">';
-		$this->render_summary_stat( __( 'Delivery zones', 'cetech-woocommerce-delivery-engine' ), (string) $state['zone_count'] );
-		$this->render_summary_stat( __( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ), (string) $state['offer_count'] );
-		$this->render_summary_stat( __( 'Rate cards (total)', 'cetech-woocommerce-delivery-engine' ), (string) $state['rate_card_count'] );
-		$this->render_summary_stat( __( 'Active rate cards', 'cetech-woocommerce-delivery-engine' ), (string) $state['active_rate_cards'] );
-		$this->render_summary_stat( __( 'Inactive rate cards', 'cetech-woocommerce-delivery-engine' ), (string) $state['inactive_rate_cards'] );
+		$this->render_summary_stat( __( 'Delivery zones', 'cetech-woocommerce-delivery-engine' ), (int) $state['zone_count'] );
+		$this->render_summary_stat( __( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ), (int) $state['offer_count'] );
+		$this->render_summary_stat( __( 'Rate cards (total)', 'cetech-woocommerce-delivery-engine' ), (int) $state['rate_card_count'] );
+		$this->render_summary_stat( __( 'Active rate cards', 'cetech-woocommerce-delivery-engine' ), (int) $state['active_rate_cards'] );
+		$this->render_summary_stat( __( 'Inactive rate cards', 'cetech-woocommerce-delivery-engine' ), (int) $state['inactive_rate_cards'] );
 		echo '</div>';
 	}
 
 	private function render_help(): void {
-		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'How delivery pricing works', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<section class="cetech-de-section cetech-de-section--help">';
+		echo '<div class="cetech-de-section-head">';
+		echo '<h2 class="cetech-de-section-title">' . esc_html__( 'Help and testing', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="cetech-de-section-desc">' . esc_html__(
+			'Simple guidance for setting prices and checking checkout.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+		echo '</div>';
+		echo '<div class="cetech-de-help-grid">';
+
 		echo '<div class="cetech-de-help-card">';
-		echo '<p>' . esc_html__(
+		echo '<h3 class="cetech-de-help-subtitle">' . esc_html__( 'How delivery pricing works', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
+		echo '<p class="cetech-de-help-lead">' . esc_html__(
 			'Delivery pricing works in three steps:',
 			'cetech-woocommerce-delivery-engine'
 		) . '</p>';
@@ -413,7 +490,7 @@ final class AdminOperationsDashboard {
 		echo '<li>' . esc_html__( 'Create a Delivery Offer for the service you provide.', 'cetech-woocommerce-delivery-engine' ) . '</li>';
 		echo '<li>' . esc_html__( 'Create a Rate Card to set the price for that zone and offer.', 'cetech-woocommerce-delivery-engine' ) . '</li>';
 		echo '</ol>';
-		echo '<p class="cetech-de-help-example"><strong>' . esc_html__( 'Example:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+		echo '<p class="cetech-de-help-example"><span class="cetech-de-help-example-label">' . esc_html__( 'Example', 'cetech-woocommerce-delivery-engine' ) . '</span> ';
 		echo esc_html__( 'Accra + Same-Day Delivery = GHS 35.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
 		echo '</div>';
 
@@ -428,13 +505,13 @@ final class AdminOperationsDashboard {
 
 		if ( '' !== $this->shop_url() ) {
 			printf(
-				'<p><a class="button button-secondary" href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
+				'<p class="cetech-de-help-action"><a class="button button-secondary" href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></p>',
 				esc_url( $this->shop_url() ),
 				esc_html__( 'Open store in new tab', 'cetech-woocommerce-delivery-engine' )
 			);
 		}
 
-		echo '</div>';
+		echo '</div></div></section>';
 	}
 
 	private function render_readiness_card(
@@ -445,29 +522,34 @@ final class AdminOperationsDashboard {
 		string $action_url,
 		string $action_label
 	): void {
-		echo '<div class="cetech-de-card cetech-de-card--' . esc_attr( $status ) . '">';
+		echo '<article class="cetech-de-card cetech-de-card--' . esc_attr( $status ) . '">';
 		echo '<div class="cetech-de-card-head">';
 		echo '<h3 class="cetech-de-card-title">' . esc_html( $title ) . '</h3>';
 		echo '<span class="cetech-de-badge cetech-de-badge--' . esc_attr( $status ) . '">' . esc_html( $status_label ) . '</span>';
 		echo '</div>';
 		echo '<p class="cetech-de-card-text">' . esc_html( $description ) . '</p>';
+		echo '<div class="cetech-de-card-footer">';
 		printf(
-			'<p><a class="cetech-de-card-link" href="%1$s">%2$s</a></p>',
+			'<a class="button button-secondary cetech-de-card-button" href="%1$s">%2$s</a>',
 			esc_url( $action_url ),
 			esc_html( $action_label )
 		);
-		echo '</div>';
+		echo '</div></article>';
 	}
 
 	private function render_checklist_item(
+		int $step,
 		string $title,
 		string $description,
 		bool $completed,
 		string $action_url,
 		string $action_label,
 		bool $informational_only = false
-	): void {
+	): int {
 		$status_class = $completed ? 'completed' : ( $informational_only ? 'manual' : 'pending' );
+		$badge_status = $completed
+			? self::STATUS_READY
+			: ( $informational_only ? self::STATUS_NOT_ACTIVE : self::STATUS_NEEDS_SETUP );
 		$status_text  = $completed
 			? __( 'Completed', 'cetech-woocommerce-delivery-engine' )
 			: ( $informational_only
@@ -475,40 +557,50 @@ final class AdminOperationsDashboard {
 				: __( 'Needs attention', 'cetech-woocommerce-delivery-engine' ) );
 
 		echo '<div class="cetech-de-checklist-item cetech-de-checklist-item--' . esc_attr( $status_class ) . '">';
+		echo '<div class="cetech-de-checklist-step" aria-hidden="true">' . esc_html( (string) $step ) . '</div>';
 		echo '<div class="cetech-de-checklist-main">';
 		echo '<p class="cetech-de-checklist-title">' . esc_html( $title ) . '</p>';
 		echo '<p class="cetech-de-checklist-desc">' . esc_html( $description ) . '</p>';
 		echo '</div>';
 		echo '<div class="cetech-de-checklist-side">';
-		echo '<span class="cetech-de-badge cetech-de-badge--' . esc_attr( $completed ? self::STATUS_READY : ( $informational_only ? self::STATUS_NOT_ACTIVE : self::STATUS_NEEDS_SETUP ) ) . '">';
+		echo '<span class="cetech-de-badge cetech-de-badge--' . esc_attr( $badge_status ) . '">';
 		echo esc_html( $status_text );
 		echo '</span>';
 		printf(
-			'<a class="button button-secondary" href="%1$s">%2$s</a>',
+			'<a class="button button-secondary cetech-de-checklist-button" href="%1$s">%2$s</a>',
 			esc_url( $action_url ),
 			esc_html( $action_label )
 		);
 		echo '</div></div>';
+
+		return $step + 1;
 	}
 
 	private function render_action_card( string $title, string $description, string $url ): void {
 		echo '<a class="cetech-de-action-card" href="' . esc_url( $url ) . '">';
+		echo '<span class="cetech-de-action-card-arrow" aria-hidden="true">&rarr;</span>';
 		echo '<span class="cetech-de-action-card-title">' . esc_html( $title ) . '</span>';
 		echo '<span class="cetech-de-action-card-desc">' . esc_html( $description ) . '</span>';
 		echo '</a>';
 	}
 
-	private function render_summary_stat( string $label, string $value ): void {
-		echo '<div class="cetech-de-summary-stat">';
-		echo '<span class="cetech-de-summary-value">' . esc_html( $value ) . '</span>';
+	private function render_summary_stat( string $label, int $value ): void {
+		$empty_class = 0 === $value ? ' cetech-de-summary-stat--empty' : '';
+		echo '<div class="cetech-de-summary-stat' . esc_attr( $empty_class ) . '">';
+		echo '<span class="cetech-de-summary-value">' . esc_html( (string) $value ) . '</span>';
 		echo '<span class="cetech-de-summary-label">' . esc_html( $label ) . '</span>';
 		echo '</div>';
 	}
 
 	private function render_button( string $label, string $url, string $variant = 'secondary' ): void {
-		$class = 'primary' === $variant ? 'button button-primary' : 'button button-secondary';
+		$class = match ( $variant ) {
+			'primary' => 'button button-primary',
+			'link'    => 'button button-link',
+			default   => 'button button-secondary',
+		};
+
 		printf(
-			'<a class="%1$s cetech-de-header-button" href="%2$s">%3$s</a> ',
+			'<a class="%1$s cetech-de-header-button" href="%2$s">%3$s</a>',
 			esc_attr( $class ),
 			esc_url( $url ),
 			esc_html( $label )
@@ -634,51 +726,427 @@ final class AdminOperationsDashboard {
 
 	private function render_styles(): void {
 		echo '<style>
-			.cetech-de-dashboard { max-width: 1200px; margin-top: 12px; }
-			.cetech-de-dashboard-header { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-			.cetech-de-dashboard-title { margin: 0 0 8px; font-size: 23px; font-weight: 400; line-height: 1.3; }
-			.cetech-de-dashboard-subtitle { margin: 0; color: #646970; font-size: 14px; max-width: 640px; }
-			.cetech-de-dashboard-header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+			.cetech-de-dashboard {
+				--cetech-de-bg: #fff;
+				--cetech-de-border: #dcdcde;
+				--cetech-de-muted: #646970;
+				--cetech-de-text: #1d2327;
+				--cetech-de-accent: #2271b1;
+				--cetech-de-radius: 8px;
+				--cetech-de-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+				max-width: 1180px;
+				margin-top: 8px;
+			}
+			.cetech-de-dashboard-header {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 20px;
+				justify-content: space-between;
+				align-items: flex-start;
+				margin-bottom: 8px;
+				padding: 24px;
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-dashboard-eyebrow {
+				margin: 0 0 6px;
+				color: var(--cetech-de-accent);
+				font-size: 12px;
+				font-weight: 600;
+				letter-spacing: 0.04em;
+				text-transform: uppercase;
+			}
+			.cetech-de-dashboard-title {
+				margin: 0 0 8px;
+				font-size: 24px;
+				font-weight: 600;
+				line-height: 1.25;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-dashboard-subtitle {
+				margin: 0;
+				color: var(--cetech-de-muted);
+				font-size: 14px;
+				line-height: 1.6;
+				max-width: 640px;
+			}
+			.cetech-de-dashboard-header-actions {
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				align-items: flex-end;
+				min-width: min(100%, 420px);
+			}
+			.cetech-de-button-group {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+				justify-content: flex-end;
+			}
 			.cetech-de-header-button { margin: 0 !important; }
-			.cetech-de-section-title { margin: 28px 0 12px; font-size: 16px; }
-			.cetech-de-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-			.cetech-de-card { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 16px; box-shadow: 0 1px 1px rgba(0,0,0,.04); }
-			.cetech-de-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
-			.cetech-de-card-title { margin: 0; font-size: 14px; }
-			.cetech-de-card-text { margin: 0 0 12px; color: #50575e; font-size: 13px; line-height: 1.5; }
-			.cetech-de-card-link { text-decoration: none; font-weight: 600; }
-			.cetech-de-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.6; white-space: nowrap; }
-			.cetech-de-badge--ready { background: #edfaef; color: #007017; }
-			.cetech-de-badge--needs_setup { background: #fcf9e8; color: #996800; }
-			.cetech-de-badge--not_active { background: #f0f0f1; color: #50575e; }
-			.cetech-de-badge--attention { background: #fcf0f1; color: #b32d2e; }
-			.cetech-de-card--ready { border-left: 4px solid #00a32a; }
-			.cetech-de-card--needs_setup { border-left: 4px solid #dba617; }
-			.cetech-de-card--not_active { border-left: 4px solid #8c8f94; }
-			.cetech-de-card--attention { border-left: 4px solid #d63638; }
-			.cetech-de-checklist { display: grid; gap: 12px; }
-			.cetech-de-checklist-item { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 14px 16px; }
-			.cetech-de-checklist-title { margin: 0 0 4px; font-weight: 600; }
-			.cetech-de-checklist-desc { margin: 0; color: #646970; font-size: 13px; max-width: 720px; }
-			.cetech-de-checklist-side { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-			.cetech-de-action-card { display: block; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 16px; text-decoration: none; color: inherit; box-shadow: 0 1px 1px rgba(0,0,0,.04); }
-			.cetech-de-action-card:hover { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; color: inherit; }
-			.cetech-de-action-card-title { display: block; font-weight: 600; margin-bottom: 6px; }
-			.cetech-de-action-card-desc { display: block; color: #646970; font-size: 13px; line-height: 1.5; }
-			.cetech-de-warnings { display: grid; gap: 12px; margin-bottom: 8px; }
-			.cetech-de-warning-card { background: #fcf9e8; border: 1px solid #dba617; border-left: 4px solid #dba617; border-radius: 4px; padding: 14px 16px; }
-			.cetech-de-warning-title { margin: 0 0 6px; font-weight: 600; }
-			.cetech-de-warning-message { margin: 0 0 10px; color: #50575e; }
-			.cetech-de-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
-			.cetech-de-summary-stat { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 14px 16px; text-align: center; }
-			.cetech-de-summary-value { display: block; font-size: 24px; font-weight: 600; line-height: 1.2; }
-			.cetech-de-summary-label { display: block; margin-top: 4px; color: #646970; font-size: 12px; }
-			.cetech-de-help-card { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 16px 20px; margin-bottom: 12px; }
-			.cetech-de-help-steps { margin: 8px 0 12px 20px; }
-			.cetech-de-help-example { margin: 0; color: #50575e; }
-			.cetech-de-help-subtitle { margin: 0 0 8px; font-size: 14px; }
-			.cetech-de-advanced { margin-top: 32px; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 0 16px 16px; }
-			.cetech-de-advanced > summary { cursor: pointer; font-weight: 600; padding: 16px 0; }
+			.cetech-de-section {
+				margin-top: 28px;
+				padding-top: 4px;
+			}
+			.cetech-de-section-head {
+				margin-bottom: 14px;
+			}
+			.cetech-de-section-title {
+				margin: 0 0 4px;
+				font-size: 18px;
+				font-weight: 600;
+				line-height: 1.3;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-section-desc {
+				margin: 0;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+				line-height: 1.5;
+				max-width: 760px;
+			}
+			.cetech-de-card-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+				gap: 16px;
+			}
+			.cetech-de-readiness-grid .cetech-de-card {
+				min-height: 190px;
+				display: flex;
+				flex-direction: column;
+			}
+			.cetech-de-card {
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 18px;
+				box-shadow: var(--cetech-de-shadow);
+				transition: box-shadow 0.15s ease, border-color 0.15s ease;
+			}
+			.cetech-de-card:hover {
+				border-color: #c3c4c7;
+				box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+			}
+			.cetech-de-card-head {
+				display: flex;
+				justify-content: space-between;
+				gap: 10px;
+				align-items: flex-start;
+				margin-bottom: 10px;
+			}
+			.cetech-de-card-title {
+				margin: 0;
+				font-size: 15px;
+				font-weight: 600;
+				line-height: 1.35;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-card-text {
+				margin: 0;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+				line-height: 1.55;
+				flex: 1;
+			}
+			.cetech-de-card-footer {
+				margin-top: 16px;
+				padding-top: 12px;
+				border-top: 1px solid #f0f0f1;
+			}
+			.cetech-de-card-button { width: 100%; text-align: center; justify-content: center; }
+			.cetech-de-badge {
+				display: inline-flex;
+				align-items: center;
+				padding: 4px 10px;
+				border-radius: 999px;
+				font-size: 11px;
+				font-weight: 600;
+				line-height: 1.4;
+				white-space: nowrap;
+				border: 1px solid transparent;
+			}
+			.cetech-de-badge--ready { background: #edfaef; color: #007017; border-color: #b8e6bf; }
+			.cetech-de-badge--needs_setup { background: #fcf9e8; color: #8a6d1d; border-color: #f0e6b8; }
+			.cetech-de-badge--not_active { background: #f6f7f7; color: #50575e; border-color: #dcdcde; }
+			.cetech-de-badge--attention { background: #fcf0f1; color: #8a2424; border-color: #f1aeb5; }
+			.cetech-de-card--ready { border-top: 3px solid #00a32a; }
+			.cetech-de-card--needs_setup { border-top: 3px solid #dba617; }
+			.cetech-de-card--not_active { border-top: 3px solid #8c8f94; }
+			.cetech-de-card--attention { border-top: 3px solid #d63638; }
+			.cetech-de-checklist {
+				display: grid;
+				gap: 10px;
+			}
+			.cetech-de-checklist-item {
+				display: grid;
+				grid-template-columns: auto 1fr auto;
+				gap: 14px;
+				align-items: center;
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 16px 18px;
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-checklist-item--completed { background: #f6fbf7; border-color: #b8e6bf; }
+			.cetech-de-checklist-item--pending { background: #fffdf5; }
+			.cetech-de-checklist-step {
+				width: 32px;
+				height: 32px;
+				border-radius: 999px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				background: #f0f0f1;
+				color: var(--cetech-de-text);
+				font-size: 13px;
+				font-weight: 700;
+				flex-shrink: 0;
+			}
+			.cetech-de-checklist-item--completed .cetech-de-checklist-step {
+				background: #00a32a;
+				color: #fff;
+			}
+			.cetech-de-checklist-title {
+				margin: 0 0 4px;
+				font-size: 14px;
+				font-weight: 600;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-checklist-desc {
+				margin: 0;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+				line-height: 1.5;
+			}
+			.cetech-de-checklist-side {
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+				align-items: flex-end;
+				min-width: 150px;
+			}
+			.cetech-de-checklist-button { white-space: nowrap; }
+			.cetech-de-action-card {
+				position: relative;
+				display: block;
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 18px 42px 18px 18px;
+				text-decoration: none;
+				color: inherit;
+				box-shadow: var(--cetech-de-shadow);
+				min-height: 108px;
+				transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+			}
+			.cetech-de-action-card:hover {
+				border-color: var(--cetech-de-accent);
+				box-shadow: 0 0 0 1px var(--cetech-de-accent);
+				color: inherit;
+				transform: translateY(-1px);
+			}
+			.cetech-de-action-card-arrow {
+				position: absolute;
+				top: 18px;
+				right: 16px;
+				color: var(--cetech-de-accent);
+				font-size: 18px;
+				line-height: 1;
+			}
+			.cetech-de-action-card-title {
+				display: block;
+				font-size: 14px;
+				font-weight: 600;
+				margin-bottom: 6px;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-action-card-desc {
+				display: block;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+				line-height: 1.5;
+			}
+			.cetech-de-warnings { display: grid; gap: 12px; }
+			.cetech-de-warning-card {
+				display: grid;
+				grid-template-columns: auto 1fr;
+				gap: 14px;
+				align-items: start;
+				background: #fffaf0;
+				border: 1px solid #f0d58a;
+				border-left: 4px solid #dba617;
+				border-radius: var(--cetech-de-radius);
+				padding: 16px 18px;
+			}
+			.cetech-de-warning-icon {
+				width: 28px;
+				height: 28px;
+				border-radius: 999px;
+				background: #dba617;
+				color: #fff;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				font-weight: 700;
+				font-size: 14px;
+				flex-shrink: 0;
+			}
+			.cetech-de-warning-title {
+				margin: 0 0 6px;
+				font-size: 14px;
+				font-weight: 600;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-warning-message {
+				margin: 0;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+				line-height: 1.55;
+			}
+			.cetech-de-warning-action { margin: 12px 0 0; }
+			.cetech-de-empty-state {
+				background: var(--cetech-de-bg);
+				border: 1px dashed var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 24px;
+				text-align: center;
+			}
+			.cetech-de-empty-state--success {
+				background: #f6fbf7;
+				border-color: #b8e6bf;
+			}
+			.cetech-de-empty-state-title {
+				margin: 0 0 6px;
+				font-size: 15px;
+				font-weight: 600;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-empty-state-text {
+				margin: 0;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+				line-height: 1.55;
+				max-width: 560px;
+				margin-left: auto;
+				margin-right: auto;
+			}
+			.cetech-de-summary-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+				gap: 12px;
+			}
+			.cetech-de-summary-stat {
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 18px 16px;
+				text-align: center;
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-summary-stat--empty .cetech-de-summary-value { color: #a7aaad; }
+			.cetech-de-summary-value {
+				display: block;
+				font-size: 28px;
+				font-weight: 700;
+				line-height: 1.1;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-summary-label {
+				display: block;
+				margin-top: 6px;
+				color: var(--cetech-de-muted);
+				font-size: 12px;
+				line-height: 1.4;
+			}
+			.cetech-de-help-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+				gap: 16px;
+			}
+			.cetech-de-help-card {
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 20px 22px;
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-help-subtitle {
+				margin: 0 0 10px;
+				font-size: 15px;
+				font-weight: 600;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-help-lead {
+				margin: 0 0 8px;
+				color: var(--cetech-de-muted);
+				font-size: 13px;
+			}
+			.cetech-de-help-steps {
+				margin: 0 0 14px 20px;
+				color: var(--cetech-de-text);
+				font-size: 13px;
+				line-height: 1.6;
+			}
+			.cetech-de-help-example {
+				margin: 0;
+				padding: 10px 12px;
+				background: #f6f7f7;
+				border-radius: 6px;
+				color: var(--cetech-de-text);
+				font-size: 13px;
+			}
+			.cetech-de-help-example-label {
+				display: inline-block;
+				margin-right: 6px;
+				padding: 2px 8px;
+				border-radius: 999px;
+				background: #e5f5fa;
+				color: var(--cetech-de-accent);
+				font-size: 11px;
+				font-weight: 600;
+				text-transform: uppercase;
+			}
+			.cetech-de-help-action { margin: 14px 0 0; }
+			.cetech-de-advanced {
+				margin-top: 36px;
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 0 20px 20px;
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-advanced > summary {
+				cursor: pointer;
+				font-weight: 600;
+				font-size: 14px;
+				padding: 18px 0;
+				color: var(--cetech-de-text);
+			}
+			.cetech-de-advanced[open] > summary {
+				border-bottom: 1px solid #f0f0f1;
+				margin-bottom: 16px;
+			}
+			@media (max-width: 782px) {
+				.cetech-de-dashboard-header { padding: 18px; }
+				.cetech-de-dashboard-header-actions {
+					align-items: stretch;
+					min-width: 100%;
+				}
+				.cetech-de-button-group { justify-content: flex-start; }
+				.cetech-de-checklist-item {
+					grid-template-columns: 1fr;
+				}
+				.cetech-de-checklist-side {
+					align-items: flex-start;
+					flex-direction: row;
+					flex-wrap: wrap;
+				}
+				.cetech-de-card-button,
+				.cetech-de-checklist-button { width: auto; }
+			}
 		</style>';
 	}
 }
