@@ -9,6 +9,8 @@ composer.lock
 # Local / secrets
 *.log
 .env
+.env.local
+docs/woodmart/
 .DS_Store
 Thumbs.db
 desktop.ini
