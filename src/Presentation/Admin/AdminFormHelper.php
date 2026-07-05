@@ -98,10 +98,22 @@ final class AdminFormHelper {
 		string $label,
 		array $options,
 		string $selected = '',
-		string $description = ''
+		string $description = '',
+		bool $required = false
 	): void {
-		echo '<tr><th scope="row"><label for="' . esc_attr( $name ) . '">' . esc_html( $label ) . '</label></th><td>';
-		printf( '<select id="%1$s" name="%1$s">', esc_attr( $name ) );
+		echo '<tr><th scope="row">';
+		echo '<label for="' . esc_attr( $name ) . '">' . esc_html( $label );
+		if ( $required ) {
+			echo ' <span class="description">' . esc_html__( '(required)', 'cetech-woocommerce-delivery-engine' ) . '</span>';
+		}
+		echo '</label></th><td>';
+
+		$select_attrs = 'class="cetech-de-select"';
+		if ( $required ) {
+			$select_attrs .= ' required="required" aria-required="true"';
+		}
+
+		printf( '<select id="%1$s" name="%1$s" %2$s>', esc_attr( $name ), $select_attrs );
 		foreach ( $options as $value => $option_label ) {
 			printf(
 				'<option value="%1$s" %2$s>%3$s</option>',

@@ -311,13 +311,17 @@ final class RateCardsPage {
 			'delivery_offer_id',
 			__( 'Delivery offer', 'cetech-woocommerce-delivery-engine' ),
 			$this->required_select_options( $this->delivery_offer_options() ),
-			(string) ( $record['delivery_offer_id'] ?? '' )
+			(string) ( $record['delivery_offer_id'] ?? '' ),
+			__( 'Choose the delivery option this price belongs to.', 'cetech-woocommerce-delivery-engine' ),
+			true
 		);
 		AdminFormHelper::select_field(
 			'destination_zone_id',
 			__( 'Destination zone', 'cetech-woocommerce-delivery-engine' ),
 			$this->required_select_options( $this->destination_zone_options() ),
-			(string) ( $record['destination_zone_id'] ?? '' )
+			(string) ( $record['destination_zone_id'] ?? '' ),
+			__( 'Choose where this price applies.', 'cetech-woocommerce-delivery-engine' ),
+			true
 		);
 		AdminFormHelper::select_field(
 			'logistics_profile_id',
