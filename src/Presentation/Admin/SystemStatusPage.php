@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Presentation\Admin;
 
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
+use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
@@ -177,6 +179,12 @@ final class SystemStatusPage {
 				__( 'Add-to-cart validation', 'cetech-woocommerce-delivery-engine' ) => $capture_active
 					? __( 'Enabled when capture flag active', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Rate quote engine registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( RateQuoteEngine::class ) ),
+				__( 'Rate quote mode', 'cetech-woocommerce-delivery-engine' ) => __( 'Admin/test only; no WooCommerce shipping calculation', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Rate quote admin test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Rate Cards → Test rate quote engine', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping method', 'cetech-woocommerce-delivery-engine' ) => __( 'Not registered', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart/checkout totals', 'cetech-woocommerce-delivery-engine' ) => __( 'Not modified', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Missing rate card behavior', 'cetech-woocommerce-delivery-engine' ) => __( 'Blocks quote / no free fallback', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipping calculation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Order delivery persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->describe_selector_storefront_output( $selector_enabled, $capture_active ),

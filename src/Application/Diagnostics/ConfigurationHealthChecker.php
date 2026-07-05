@@ -7,6 +7,7 @@ namespace CetechDeliveryEngine\Application\Diagnostics;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
@@ -75,6 +76,7 @@ final class ConfigurationHealthChecker {
 		$this->check_product_delivery_selector( $diagnostics );
 		$this->check_cart_delivery_selection_capture( $diagnostics );
 		$this->check_checkout_delivery_selection_validation( $diagnostics );
+		$this->check_rate_quote( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1419,6 +1421,82 @@ final class ConfigurationHealthChecker {
 				__( 'Checkout delivery selection validation is enabled but CartDeliverySelectionRevalidator is not available.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_rate_quote( array &$diagnostics ): void {
+		$active_rules = $this->product_rule_repository->listActive( [ 'limit' => 1 ] );
+		$active_cards = $this->rate_card_repository->list(
+			[
+				'status' => RecordStatus::Active->value,
+				'limit'  => 1,
+			]
+		);
+
+		if ( [] !== $active_rules && [] === $active_cards ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'active_product_rules_without_active_rate_cards',
+				__( 'Active product rules without active rate cards', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Active product delivery rules exist but no active rate cards are configured. Delivery cannot be priced.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card'
+			);
+		}
+
+		$capture_enabled  = $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' );
+		$checkout_enabled = $this->feature_flags->is_enabled( 'enable_checkout_delivery_selection_validation' );
+
+		if ( ( $capture_enabled || $checkout_enabled ) && ! class_exists( RateQuoteEngine::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_quote_engine_missing_with_capture_or_checkout',
+				__( 'Rate quote engine missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Cart capture or checkout validation is enabled but RateQuoteEngine is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		$offer_ids_with_active_cards = [];
+
+		foreach ( $this->rate_card_repository->list( [ 'status' => RecordStatus::Active->value, 'limit' => self::LIST_LIMIT ] ) as $card ) {
+			$offer_id = (int) ( $card['delivery_offer_id'] ?? 0 );
+
+			if ( $offer_id > 0 ) {
+				$offer_ids_with_active_cards[ $offer_id ] = true;
+			}
+		}
+
+		foreach ( $this->delivery_offer_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $offer ) {
+			if ( RecordStatus::Active->value !== (string) ( $offer['status'] ?? '' ) ) {
+				continue;
+			}
+
+			$offer_id = (int) ( $offer['id'] ?? 0 );
+
+			if ( $offer_id <= 0 ) {
+				continue;
+			}
+
+			if ( ! isset( $offer_ids_with_active_cards[ $offer_id ] ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'delivery_offer_without_active_rate_cards',
+					__( 'Active delivery offer without rate cards', 'cetech-woocommerce-delivery-engine' ),
+					sprintf(
+						/* translators: %s: delivery offer internal code */
+						__( 'Active delivery offer "%s" has no matching active rate cards.', 'cetech-woocommerce-delivery-engine' ),
+						(string) ( $offer['internal_code'] ?? (string) $offer_id )
+					),
+					'delivery_offer',
+					$offer_id
+				);
+			}
 		}
 	}
 

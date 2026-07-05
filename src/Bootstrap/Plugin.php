@@ -11,6 +11,7 @@ use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
+use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
@@ -303,6 +304,13 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			RateQuoteEngine::class,
+			static fn ( ServiceContainer $container ): RateQuoteEngine => new RateQuoteEngine(
+				$container->get( RateCardRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
 			ProductTargetResolver::class,
 			static fn ( ServiceContainer $container ): ProductTargetResolver => new ProductTargetResolver(
 				$container->get( Requirements::class )
@@ -469,6 +477,7 @@ final class Plugin {
 				$container->get( OriginRepositoryInterface::class ),
 				$container->get( RateCardValidator::class ),
 				$container->get( AdminRateCardTester::class ),
+				$container->get( RateQuoteEngine::class ),
 				$container->get( AdminActionHandler::class ),
 				$container->get( ConfigurationAuditLogger::class )
 			)

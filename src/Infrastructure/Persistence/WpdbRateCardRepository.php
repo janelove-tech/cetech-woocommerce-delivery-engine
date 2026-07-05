@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Infrastructure\Persistence;
 
+use CetechDeliveryEngine\Domain\Enum\RecordStatus;
 use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 
 /**
@@ -75,6 +76,32 @@ final class WpdbRateCardRepository extends AbstractWpdbRepository implements Rat
 
 	public function count_all(): int {
 		return parent::count_all();
+	}
+
+	public function listActiveForQuoteMatch(
+		int $delivery_offer_id,
+		int $destination_zone_id,
+		string $currency_code
+	): array {
+		global $wpdb;
+
+		$table         = $this->table_name();
+		$currency_code = strtoupper( trim( $currency_code ) );
+		$sql           = "SELECT * FROM `{$table}` WHERE status = %s AND delivery_offer_id = %d AND destination_zone_id = %d AND base_currency = %s ORDER BY priority ASC, id ASC";
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				$sql,
+				RecordStatus::Active->value,
+				$delivery_offer_id,
+				$destination_zone_id,
+				$currency_code
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : [];
 	}
 
 	private function nullable_positive_int( mixed $value ): ?int {

@@ -199,6 +199,25 @@ final class RateCardValidator {
 		return $errors;
 	}
 
+	/**
+	 * @param array<string, mixed> $input
+	 *
+	 * @return array<string, string>
+	 */
+	public function validate_quote_test_input( array $input ): array {
+		return $this->validate_test_input(
+			[
+				'test_delivery_offer_id'    => $input['quote_delivery_offer_id'] ?? null,
+				'test_destination_zone_id'  => $input['quote_destination_zone_id'] ?? null,
+				'test_logistics_profile_id' => $input['quote_logistics_profile_id'] ?? null,
+				'test_supplier_id'          => $input['quote_supplier_id'] ?? null,
+				'test_origin_id'            => $input['quote_origin_id'] ?? null,
+				'test_quantity'             => $input['quote_quantity'] ?? null,
+				'test_currency_code'        => $input['quote_currency_code'] ?? null,
+			]
+		);
+	}
+
 	private function nullable_positive_int( mixed $value ): ?int {
 		if ( null === $value || '' === $value || '0' === (string) $value ) {
 			return null;

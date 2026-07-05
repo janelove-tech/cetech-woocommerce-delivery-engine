@@ -31,4 +31,15 @@ interface RateCardRepositoryInterface {
 	public function softDelete( int $id ): bool;
 
 	public function count_all(): int;
+
+	/**
+	 * Active rate cards matching exact offer, zone, and currency (quote engine prefilter).
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function listActiveForQuoteMatch(
+		int $delivery_offer_id,
+		int $destination_zone_id,
+		string $currency_code
+	): array;
 }

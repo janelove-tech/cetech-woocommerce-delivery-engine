@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Presentation\Admin;
 
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
+use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
+use CetechDeliveryEngine\Application\RateQuote\RateQuoteRequest;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\Enum\RateCardChargeType;
 use CetechDeliveryEngine\Domain\Enum\RecordStatus;
@@ -28,6 +30,8 @@ final class RateCardsPage {
 
 	private const ACTION_TEST = 'cetech_de_test_rate_card';
 
+	private const ACTION_QUOTE_TEST = 'cetech_de_test_rate_quote';
+
 	public function __construct(
 		private RateCardRepositoryInterface $repository,
 		private DeliveryOfferRepositoryInterface $delivery_offer_repository,
@@ -37,6 +41,7 @@ final class RateCardsPage {
 		private OriginRepositoryInterface $origin_repository,
 		private RateCardValidator $validator,
 		private AdminRateCardTester $tester,
+		private RateQuoteEngine $quote_engine,
 		private AdminActionHandler $action_handler,
 		private ConfigurationAuditLogger $audit_logger
 	) {
@@ -53,6 +58,10 @@ final class RateCardsPage {
 
 		if ( $this->action_handler->verify_post( self::ACTION_TEST, self::ACTION_TEST, 'manage_delivery_rate_cards', self::SLUG ) ) {
 			$this->handle_test();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_QUOTE_TEST, self::ACTION_QUOTE_TEST, 'manage_delivery_rate_cards', self::SLUG ) ) {
+			$this->handle_quote_test();
 		}
 	}
 
@@ -123,6 +132,7 @@ final class RateCardsPage {
 		);
 
 		$this->render_test_tool();
+		$this->render_quote_test_tool();
 		AdminPageRenderer::close_wrap();
 	}
 
@@ -192,6 +202,82 @@ final class RateCardsPage {
 		if ( is_array( $draft ) && isset( $draft['test_result'] ) ) {
 			echo '<p><strong>' . esc_html__( 'Result:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
 			echo esc_html( (string) $draft['test_result'] );
+			echo '</p>';
+		}
+	}
+
+	private function render_quote_test_tool(): void {
+		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_quote_test' );
+
+		echo '<h2>' . esc_html__( 'Test rate quote engine', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="description">' . esc_html__(
+			'Read-only admin quote via RateQuoteEngine. Does not change data, cart, checkout, orders, or WooCommerce shipping totals.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+
+		echo '<form method="post" action="">';
+		AdminFormHelper::nonce_field( self::ACTION_QUOTE_TEST );
+		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_QUOTE_TEST ) . '" />';
+		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminFormHelper::select_field(
+			'quote_delivery_offer_id',
+			__( 'Delivery offer', 'cetech-woocommerce-delivery-engine' ),
+			$this->required_select_options( $this->delivery_offer_options() ),
+			(string) ( $draft['quote_delivery_offer_id'] ?? '' )
+		);
+		AdminFormHelper::select_field(
+			'quote_destination_zone_id',
+			__( 'Destination zone', 'cetech-woocommerce-delivery-engine' ),
+			$this->required_select_options( $this->destination_zone_options() ),
+			(string) ( $draft['quote_destination_zone_id'] ?? '' )
+		);
+		AdminFormHelper::select_field(
+			'quote_logistics_profile_id',
+			__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->logistics_profile_options() ),
+			(string) ( $draft['quote_logistics_profile_id'] ?? '' ),
+			__( 'Optional. Leave blank for wildcard.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'quote_supplier_id',
+			__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->supplier_options() ),
+			(string) ( $draft['quote_supplier_id'] ?? '' ),
+			__( 'Optional. Leave blank for wildcard.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'quote_origin_id',
+			__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->origin_options() ),
+			(string) ( $draft['quote_origin_id'] ?? '' ),
+			__( 'Optional. Leave blank for wildcard.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field(
+			'quote_quantity',
+			__( 'Quantity', 'cetech-woocommerce-delivery-engine' ),
+			isset( $draft['quote_quantity'] ) ? (int) $draft['quote_quantity'] : 1,
+			1
+		);
+		AdminFormHelper::text_field(
+			'quote_currency_code',
+			__( 'Currency code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $draft['quote_currency_code'] ?? '' ),
+			true,
+			__( '3-letter ISO code.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field(
+			'quote_product_id',
+			__( 'Product ID (optional)', 'cetech-woocommerce-delivery-engine' ),
+			isset( $draft['quote_product_id'] ) ? (int) $draft['quote_product_id'] : 0,
+			0
+		);
+		echo '</tbody></table>';
+		submit_button( __( 'Run quote test', 'cetech-woocommerce-delivery-engine' ), 'secondary', 'submit', false );
+		echo '</form>';
+
+		if ( is_array( $draft ) && isset( $draft['quote_result'] ) ) {
+			echo '<p><strong>' . esc_html__( 'Quote result:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $draft['quote_result'] );
 			echo '</p>';
 		}
 	}
@@ -466,6 +552,71 @@ final class RateCardsPage {
 		}
 
 		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_test', $input );
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function handle_quote_test(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$input = [
+			'quote_delivery_offer_id'    => isset( $_POST['quote_delivery_offer_id'] ) ? (int) $_POST['quote_delivery_offer_id'] : 0,
+			'quote_destination_zone_id'  => isset( $_POST['quote_destination_zone_id'] ) ? (int) $_POST['quote_destination_zone_id'] : 0,
+			'quote_logistics_profile_id' => isset( $_POST['quote_logistics_profile_id'] ) ? (int) $_POST['quote_logistics_profile_id'] : 0,
+			'quote_supplier_id'          => isset( $_POST['quote_supplier_id'] ) ? (int) $_POST['quote_supplier_id'] : 0,
+			'quote_origin_id'            => isset( $_POST['quote_origin_id'] ) ? (int) $_POST['quote_origin_id'] : 0,
+			'quote_quantity'             => isset( $_POST['quote_quantity'] ) ? (int) $_POST['quote_quantity'] : 0,
+			'quote_currency_code'        => isset( $_POST['quote_currency_code'] ) ? wp_unslash( (string) $_POST['quote_currency_code'] ) : '',
+			'quote_product_id'           => isset( $_POST['quote_product_id'] ) ? (int) $_POST['quote_product_id'] : 0,
+		];
+
+		$errors = $this->validator->validate_quote_test_input( $input );
+
+		if ( [] !== $errors ) {
+			$input['quote_result'] = implode( ' ', $errors );
+			$this->action_handler->notices()->stash_form_draft( self::SLUG . '_quote_test', $input );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		try {
+			$request = RateQuoteRequest::fromArray(
+				[
+					'delivery_offer_id'    => $input['quote_delivery_offer_id'],
+					'destination_zone_id'  => $input['quote_destination_zone_id'],
+					'quantity'             => $input['quote_quantity'],
+					'currency_code'        => strtoupper( trim( $input['quote_currency_code'] ) ),
+					'logistics_profile_id' => $input['quote_logistics_profile_id'] > 0 ? $input['quote_logistics_profile_id'] : null,
+					'supplier_id'          => $input['quote_supplier_id'] > 0 ? $input['quote_supplier_id'] : null,
+					'origin_id'            => $input['quote_origin_id'] > 0 ? $input['quote_origin_id'] : null,
+					'product_id'           => $input['quote_product_id'] > 0 ? $input['quote_product_id'] : null,
+				]
+			);
+		} catch ( \InvalidArgumentException $exception ) {
+			$input['quote_result'] = $exception->getMessage();
+			$this->action_handler->notices()->stash_form_draft( self::SLUG . '_quote_test', $input );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$result = $this->quote_engine->quote( $request );
+
+		if ( ! $result->success ) {
+			$input['quote_result'] = (string) $result->message;
+
+			if ( null !== $result->error_code ) {
+				$input['quote_result'] .= ' [' . $result->error_code . ']';
+			}
+		} else {
+			$input['quote_result'] = sprintf(
+				/* translators: 1: rate card code, 2: rate card ID, 3: charge type, 4: amount, 5: currency, 6: explanation */
+				__( 'Success | Matched: %1$s (ID %2$d) | Charge: %3$s | Amount: %4$s %5$s | %6$s', 'cetech-woocommerce-delivery-engine' ),
+				(string) ( $result->matched_rate_card_code ?? '' ),
+				(int) ( $result->matched_rate_card_id ?? 0 ),
+				(string) ( $result->charge_type ?? '' ),
+				(string) ( $result->amount?->amount() ?? '' ),
+				(string) ( $result->amount?->currency()->value() ?? '' ),
+				(string) $result->message
+			);
+		}
+
+		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_quote_test', $input );
 		$this->action_handler->redirect( self::SLUG );
 	}
 
