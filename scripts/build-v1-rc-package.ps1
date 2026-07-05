@@ -102,7 +102,7 @@ $ExcludeDirNames = @(
 )
 
 $ExcludeFilePatterns = @(
-    '*.zip', '*.log', '.env', '.DS_Store', 'Thumbs.db', 'desktop.ini'
+    '*.zip', '*.log', '.env', '.env.local', '.DS_Store', 'Thumbs.db', 'desktop.ini'
 )
 
 Write-Step 'Copying plugin files into staging folder'
@@ -125,6 +125,12 @@ Get-ChildItem -LiteralPath $RepoRoot -Force | ForEach-Object {
     }
 
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $StagePluginDir $name) -Force
+}
+
+$WoodmartPath = Join-Path $StagePluginDir 'docs/woodmart'
+if (Test-Path $WoodmartPath) {
+    Write-Step 'Removing docs/woodmart from staging (local compatibility copy only)'
+    Remove-Item -LiteralPath $WoodmartPath -Recurse -Force
 }
 
 $VendorAutoload = Join-Path $StagePluginDir 'vendor/autoload.php'
