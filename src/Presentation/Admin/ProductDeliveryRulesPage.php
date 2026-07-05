@@ -7,6 +7,8 @@ namespace CetechDeliveryEngine\Presentation\Admin;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
 use CetechDeliveryEngine\Application\ProductRule\ResolvedProductDeliveryRule;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidationResult;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\Enum\FulfilmentAvailability;
 use CetechDeliveryEngine\Domain\Enum\FulfilmentChoice;
@@ -34,6 +36,8 @@ final class ProductDeliveryRulesPage {
 
 	private const ACTION_RESOLVE_TEST = 'cetech_de_test_product_rule_resolution';
 
+	private const ACTION_VALIDATE_SELECTION = 'cetech_de_test_selection_validation';
+
 	public function __construct(
 		private ProductDeliveryRuleRepositoryInterface $repository,
 		private DeliveryOfferRepositoryInterface $delivery_offer_repository,
@@ -42,6 +46,7 @@ final class ProductDeliveryRulesPage {
 		private OriginRepositoryInterface $origin_repository,
 		private ProductDeliveryRuleValidator $validator,
 		private ProductDeliveryRuleResolver $rule_resolver,
+		private ProductDeliverySelectionValidator $selection_validator,
 		private AdminActionHandler $action_handler,
 		private ConfigurationAuditLogger $audit_logger
 	) {
@@ -58,6 +63,10 @@ final class ProductDeliveryRulesPage {
 
 		if ( $this->action_handler->verify_post( self::ACTION_RESOLVE_TEST, self::ACTION_RESOLVE_TEST, 'manage_product_delivery_rules', self::SLUG ) ) {
 			$this->handle_resolution_test();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_VALIDATE_SELECTION, self::ACTION_VALIDATE_SELECTION, 'manage_product_delivery_rules', self::SLUG ) ) {
+			$this->handle_selection_validation_test();
 		}
 	}
 
@@ -126,6 +135,8 @@ final class ProductDeliveryRulesPage {
 		);
 
 		$this->render_resolution_test_tool( $lookups );
+
+		$this->render_selection_validation_test_tool();
 
 		AdminPageRenderer::close_wrap();
 	}
@@ -329,6 +340,168 @@ final class ProductDeliveryRulesPage {
 
 		$input['resolution_result'] = $result->toArray();
 		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_resolve', $input );
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_selection_validation_test_tool(): void {
+		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_validate' );
+
+		echo '<h2>' . esc_html__( 'Test delivery selection validation', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="description">' . esc_html__(
+			'Read-only admin check of whether a display_key would validate for a product context. Does not write cart, session, order, or product metadata.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+		echo '<p class="description">' . esc_html__(
+			'Requires enable_product_delivery_selector to be enabled. Use display keys from the resolution test or product-page selector (format: availability:choice:suffix).',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+
+		echo '<form method="post" action="">';
+		AdminFormHelper::nonce_field( self::ACTION_VALIDATE_SELECTION );
+		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_VALIDATE_SELECTION ) . '" />';
+		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminFormHelper::number_field(
+			'test_product_id',
+			__( 'Product ID', 'cetech-woocommerce-delivery-engine' ),
+			isset( $draft['test_product_id'] ) ? (int) $draft['test_product_id'] : null,
+			1,
+			__( 'WooCommerce simple or parent product ID.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field(
+			'test_variation_id',
+			__( 'Variation ID (optional)', 'cetech-woocommerce-delivery-engine' ),
+			isset( $draft['test_variation_id'] ) ? (int) $draft['test_variation_id'] : null,
+			0,
+			__( 'Required for variable products. Leave 0 for simple products.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'test_display_key',
+			__( 'Display key', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $draft['test_display_key'] ?? '' ),
+			true,
+			__( 'Example: in_store:delivery:12 or in_store:store_pickup:pickup', 'cetech-woocommerce-delivery-engine' )
+		);
+		echo '</tbody></table>';
+		submit_button( __( 'Run selection validation test', 'cetech-woocommerce-delivery-engine' ), 'secondary', 'submit', false );
+		echo '</form>';
+
+		if ( is_array( $draft ) && isset( $draft['validation_result'] ) && is_array( $draft['validation_result'] ) ) {
+			$this->render_selection_validation_result( ProductDeliverySelectionValidationResult::fromArray( $draft['validation_result'] ) );
+		} elseif ( is_array( $draft ) && ! empty( $draft['validation_error'] ) ) {
+			echo '<h3>' . esc_html__( 'Validation result', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
+			echo '<p><strong>' . esc_html__( 'Error:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $draft['validation_error'] );
+			echo '</p>';
+		}
+	}
+
+	private function render_selection_validation_result( ProductDeliverySelectionValidationResult $result ): void {
+		echo '<h3>' . esc_html__( 'Validation result', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
+
+		echo '<p><strong>' . esc_html__( 'Valid:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+		echo esc_html( $result->valid ? __( 'Yes', 'cetech-woocommerce-delivery-engine' ) : __( 'No', 'cetech-woocommerce-delivery-engine' ) );
+		echo '</p>';
+
+		if ( ! $result->valid ) {
+			echo '<p><strong>' . esc_html__( 'Error code:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $result->error_code );
+			echo '</p>';
+			echo '<p><strong>' . esc_html__( 'Message:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $result->error_message );
+			echo '</p>';
+		}
+
+		if ( [] !== $result->warnings ) {
+			echo '<p><strong>' . esc_html__( 'Warnings:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p><ul>';
+			foreach ( $result->warnings as $warning ) {
+				echo '<li>' . esc_html( $warning ) . '</li>';
+			}
+			echo '</ul>';
+		}
+
+		if ( is_array( $result->matched_option ) ) {
+			echo '<p><strong>' . esc_html__( 'Matched option:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p>';
+			echo '<ul>';
+			foreach (
+				[
+					'display_key'                       => __( 'Display key', 'cetech-woocommerce-delivery-engine' ),
+					'fulfilment_availability_label'     => __( 'Availability', 'cetech-woocommerce-delivery-engine' ),
+					'fulfilment_choice_label'           => __( 'Choice', 'cetech-woocommerce-delivery-engine' ),
+					'delivery_offer_public_label'       => __( 'Public label', 'cetech-woocommerce-delivery-engine' ),
+					'estimate_text'                     => __( 'Estimate', 'cetech-woocommerce-delivery-engine' ),
+					'is_available'                      => __( 'Available', 'cetech-woocommerce-delivery-engine' ),
+				] as $field => $label
+			) {
+				if ( ! isset( $result->matched_option[ $field ] ) ) {
+					continue;
+				}
+
+				$value = $result->matched_option[ $field ];
+
+				if ( 'is_available' === $field ) {
+					$value = ! empty( $value )
+						? __( 'Yes', 'cetech-woocommerce-delivery-engine' )
+						: __( 'No', 'cetech-woocommerce-delivery-engine' );
+				}
+
+				echo '<li><strong>' . esc_html( $label ) . ':</strong> ' . esc_html( (string) $value ) . '</li>';
+			}
+			echo '</ul>';
+		}
+
+		if ( is_array( $result->intent ) ) {
+			echo '<p><strong>' . esc_html__( 'Selection intent (server-side handoff):', 'cetech-woocommerce-delivery-engine' ) . '</strong></p>';
+			echo '<ul>';
+			foreach (
+				[
+					'contract_version'        => __( 'Contract version', 'cetech-woocommerce-delivery-engine' ),
+					'product_id'              => __( 'Product ID', 'cetech-woocommerce-delivery-engine' ),
+					'variation_id'            => __( 'Variation ID', 'cetech-woocommerce-delivery-engine' ),
+					'target_type'             => __( 'Target type', 'cetech-woocommerce-delivery-engine' ),
+					'target_id'               => __( 'Target ID', 'cetech-woocommerce-delivery-engine' ),
+					'display_key'             => __( 'Display key', 'cetech-woocommerce-delivery-engine' ),
+					'rule_id'                 => __( 'Rule ID', 'cetech-woocommerce-delivery-engine' ),
+					'delivery_offer_id'       => __( 'Delivery offer ID', 'cetech-woocommerce-delivery-engine' ),
+					'issued_at'               => __( 'Issued at', 'cetech-woocommerce-delivery-engine' ),
+				] as $field => $label
+			) {
+				if ( ! isset( $result->intent[ $field ] ) || ( '' === $result->intent[ $field ] && 'variation_id' !== $field ) ) {
+					continue;
+				}
+
+				echo '<li><strong>' . esc_html( $label ) . ':</strong> ' . esc_html( (string) $result->intent[ $field ] ) . '</li>';
+			}
+			echo '</ul>';
+		}
+	}
+
+	private function handle_selection_validation_test(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$input = [
+			'test_product_id'    => isset( $_POST['test_product_id'] ) ? (int) $_POST['test_product_id'] : 0,
+			'test_variation_id'  => isset( $_POST['test_variation_id'] ) ? (int) $_POST['test_variation_id'] : 0,
+			'test_display_key'   => isset( $_POST['test_display_key'] ) ? wp_unslash( (string) $_POST['test_display_key'] ) : '',
+		];
+
+		$errors = $this->validator->validate_selection_test_input( $input );
+
+		if ( [] !== $errors ) {
+			$input['validation_error'] = implode( ' ', array_values( $errors ) );
+			$this->action_handler->notices()->stash_form_draft( self::SLUG . '_validate', $input );
+			$this->action_handler->notices()->flash_error( implode( ' ', array_values( $errors ) ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$variation_id = (int) $input['test_variation_id'] > 0 ? (int) $input['test_variation_id'] : null;
+
+		$result = $this->selection_validator->validate(
+			(int) $input['test_product_id'],
+			$variation_id,
+			(string) $input['test_display_key']
+		);
+
+		$input['validation_result'] = $result->toArray();
+		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_validate', $input );
 		$this->action_handler->redirect( self::SLUG );
 	}
 

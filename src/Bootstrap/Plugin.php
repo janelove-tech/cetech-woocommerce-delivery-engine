@@ -6,6 +6,7 @@ namespace CetechDeliveryEngine\Bootstrap;
 
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
@@ -347,6 +348,16 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			ProductDeliverySelectionValidator::class,
+			static fn ( ServiceContainer $container ): ProductDeliverySelectionValidator => new ProductDeliverySelectionValidator(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( ProductDeliveryRuleResolver::class ),
+				$container->get( ProductDeliveryOptionsBuilder::class )
+			)
+		);
+
+		$this->container->singleton(
 			ProductDeliverySelectorRenderer::class,
 			static fn ( ServiceContainer $container ): ProductDeliverySelectorRenderer => new ProductDeliverySelectorRenderer(
 				$container->get( FeatureFlags::class ),
@@ -437,6 +448,7 @@ final class Plugin {
 				$container->get( OriginRepositoryInterface::class ),
 				$container->get( ProductDeliveryRuleValidator::class ),
 				$container->get( ProductDeliveryRuleResolver::class ),
+				$container->get( ProductDeliverySelectionValidator::class ),
 				$container->get( AdminActionHandler::class ),
 				$container->get( ConfigurationAuditLogger::class )
 			)

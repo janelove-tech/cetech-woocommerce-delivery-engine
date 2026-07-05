@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Presentation\Admin\Validation;
 
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
+
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\Enum\FulfilmentAvailability;
 use CetechDeliveryEngine\Domain\Enum\FulfilmentChoice;
@@ -154,6 +156,34 @@ final class ProductDeliveryRuleValidator {
 			if ( null !== $target_error ) {
 				$errors['test_target_id'] = $target_error;
 			}
+		}
+
+		return $errors;
+	}
+
+	/**
+	 * @param array<string, mixed> $input
+	 *
+	 * @return array<string, string>
+	 */
+	public function validate_selection_test_input( array $input ): array {
+		$errors      = [];
+		$product_id  = isset( $input['test_product_id'] ) ? (int) $input['test_product_id'] : 0;
+		$variation_id = isset( $input['test_variation_id'] ) ? (int) $input['test_variation_id'] : 0;
+		$display_key = ProductDeliveryOptionsBuilder::normalizeDisplayKey(
+			isset( $input['test_display_key'] ) ? (string) $input['test_display_key'] : ''
+		);
+
+		if ( $product_id <= 0 ) {
+			$errors['test_product_id'] = __( 'Product ID is required.', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( $variation_id < 0 ) {
+			$errors['test_variation_id'] = __( 'Variation ID must be zero or a positive integer.', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( '' === $display_key ) {
+			$errors['test_display_key'] = __( 'Display key is required and must use the format availability:choice:suffix.', 'cetech-woocommerce-delivery-engine' );
 		}
 
 		return $errors;

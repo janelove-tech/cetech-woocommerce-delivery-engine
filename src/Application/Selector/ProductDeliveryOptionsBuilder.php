@@ -185,7 +185,43 @@ final class ProductDeliveryOptionsBuilder {
 	}
 
 	private function display_key( string $availability, string $choice, string $suffix ): string {
-		return sanitize_key( $availability ) . ':' . sanitize_key( $choice ) . ':' . sanitize_key( $suffix );
+		return self::formatDisplayKey( $availability, $choice, $suffix );
+	}
+
+	/**
+	 * Builds a deterministic customer-safe display key: {availability}:{choice}:{suffix}.
+	 *
+	 * Suffix is an offer ID, "pickup", or "unavailable". No private data or prices.
+	 */
+	public static function formatDisplayKey( string $availability, string $choice, string $suffix ): string {
+		return self::normalizeDisplayKey(
+			sanitize_key( $availability ) . ':' . sanitize_key( $choice ) . ':' . sanitize_key( $suffix )
+		);
+	}
+
+	/**
+	 * Normalizes a display key for comparison (three colon-separated sanitized segments).
+	 */
+	public static function normalizeDisplayKey( string $display_key ): string {
+		$parts = explode( ':', trim( $display_key ), 3 );
+
+		if ( 3 !== count( $parts ) ) {
+			return '';
+		}
+
+		$normalized = [];
+
+		foreach ( $parts as $part ) {
+			$segment = sanitize_key( $part );
+
+			if ( '' === $segment ) {
+				return '';
+			}
+
+			$normalized[] = $segment;
+		}
+
+		return implode( ':', $normalized );
 	}
 
 	private function availability_label( string $availability ): ?string {

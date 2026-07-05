@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Application\Diagnostics;
 
+use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
 use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
@@ -1150,6 +1153,28 @@ final class ConfigurationHealthChecker {
 				'selector_enabled_options_builder_missing',
 				__( 'Product selector: options builder missing', 'cetech-woocommerce-delivery-engine' ),
 				__( 'The product delivery selector is enabled but ProductDeliveryOptionsBuilder is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( ProductDeliverySelectionValidator::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'selector_enabled_selection_validator_missing',
+				__( 'Product selector: selection validator missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The product delivery selector is enabled but ProductDeliverySelectionValidator is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! ProductDeliverySelectionIntent::isCompatibleWithOptionContract( ProductDeliveryOption::CONTRACT_VERSION ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'selector_contract_version_mismatch',
+				__( 'Product selector: contract version mismatch', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Selection intent and product delivery option contract versions are incompatible.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
 		}

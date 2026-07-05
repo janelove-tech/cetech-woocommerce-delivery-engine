@@ -10,6 +10,8 @@ use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
+use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
 use CetechDeliveryEngine\Presentation\Frontend\ProductDeliverySelectorRenderer;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
@@ -147,6 +149,10 @@ final class SystemStatusPage {
 				__( 'Selector option contract version', 'cetech-woocommerce-delivery-engine' ) => ProductDeliveryOption::CONTRACT_VERSION,
 				__( 'Selector options builder registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliveryOptionsBuilder::class ) ),
 				__( 'Selector option persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Display-only; not persisted to cart', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Selection validator registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliverySelectionValidator::class ) ),
+				__( 'Selection intent contract version', 'cetech-woocommerce-delivery-engine' ) => ProductDeliverySelectionIntent::CONTRACT_VERSION,
+				__( 'Selection persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add-to-cart validation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->feature_flags->is_enabled( 'enable_product_delivery_selector' )
 					? __( 'Enabled on product pages (display-only; no cart/checkout)', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Disabled (flag off by default)', 'cetech-woocommerce-delivery-engine' ),
