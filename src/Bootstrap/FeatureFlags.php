@@ -18,6 +18,7 @@ final class FeatureFlags {
 		'enable_checkout_delivery_selection_validation' => false,
 		'enable_woocommerce_shipping_rate_calculation' => false,
 		'enable_order_delivery_snapshot_persistence' => false,
+		'enable_customer_order_delivery_summary' => false,
 		'enable_shipment_records'          => true,
 		'enable_customer_timeline'         => false,
 		'enable_tracking_links'            => true,

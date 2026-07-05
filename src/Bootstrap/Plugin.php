@@ -14,6 +14,7 @@ use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
 use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
+use CetechDeliveryEngine\Application\Order\CustomerOrderDeliverySummaryBuilder;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotBuilder;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
@@ -66,6 +67,7 @@ use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
 use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
+use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
 use CetechDeliveryEngine\Presentation\Frontend\ProductDeliverySelectorRenderer;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationRuleValidator;
@@ -166,6 +168,7 @@ final class Plugin {
 		$this->container->get( CheckoutDeliverySelectionValidator::class )->register();
 		$this->container->get( SelectedOfferShippingIntegration::class )->register();
 		$this->container->get( OrderDeliverySnapshotPersister::class )->register();
+		$this->container->get( CustomerOrderDeliverySummaryRenderer::class )->register();
 
 		if ( is_admin() ) {
 			$this->container->get( OrderDeliverySnapshotAdminDisplay::class )->register();
@@ -504,6 +507,23 @@ final class Plugin {
 			static fn ( ServiceContainer $container ): OrderDeliverySnapshotAdminDisplay => new OrderDeliverySnapshotAdminDisplay(
 				$container->get( OrderDeliverySnapshotReader::class ),
 				$container->get( OrderDeliverySnapshotIntegrity::class )
+			)
+		);
+
+		$this->container->singleton(
+			CustomerOrderDeliverySummaryBuilder::class,
+			static fn ( ServiceContainer $container ): CustomerOrderDeliverySummaryBuilder => new CustomerOrderDeliverySummaryBuilder(
+				$container->get( OrderDeliverySnapshotReader::class ),
+				$container->get( OrderDeliverySnapshotIntegrity::class )
+			)
+		);
+
+		$this->container->singleton(
+			CustomerOrderDeliverySummaryRenderer::class,
+			static fn ( ServiceContainer $container ): CustomerOrderDeliverySummaryRenderer => new CustomerOrderDeliverySummaryRenderer(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( CustomerOrderDeliverySummaryBuilder::class )
 			)
 		);
 

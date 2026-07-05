@@ -7,11 +7,13 @@ namespace CetechDeliveryEngine\Application\Diagnostics;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\Order\CustomerOrderDeliverySummaryBuilder;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
 use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
+use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
@@ -87,6 +89,7 @@ final class ConfigurationHealthChecker {
 		$this->check_rate_quote( $diagnostics );
 		$this->check_woocommerce_shipping_rate_calculation( $diagnostics );
 		$this->check_order_delivery_snapshot_persistence( $diagnostics );
+		$this->check_customer_order_delivery_summary( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1713,6 +1716,59 @@ final class ConfigurationHealthChecker {
 				'order_snapshot_enabled_integrity_checker_missing',
 				__( 'Order snapshot: integrity checker missing', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Order delivery snapshot persistence is enabled but OrderDeliverySnapshotIntegrity is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_customer_order_delivery_summary( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( CustomerOrderDeliverySummaryBuilder::SUMMARY_FLAG ) ) {
+			return;
+		}
+
+		if ( ! $this->feature_flags->is_enabled( OrderDeliverySnapshotGate::SNAPSHOT_FLAG ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'customer_summary_enabled_snapshot_persistence_disabled',
+				__( 'Customer summary enabled without snapshot persistence', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer order delivery summary is enabled but enable_order_delivery_snapshot_persistence is disabled. Existing orders may have no snapshots to display.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotReader::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'customer_summary_enabled_reader_missing',
+				__( 'Customer summary: snapshot reader missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer order delivery summary is enabled but OrderDeliverySnapshotReader is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotIntegrity::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'customer_summary_enabled_integrity_checker_missing',
+				__( 'Customer summary: integrity checker missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer order delivery summary is enabled but OrderDeliverySnapshotIntegrity is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( CustomerOrderDeliverySummaryRenderer::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'customer_summary_enabled_renderer_missing',
+				__( 'Customer summary: renderer missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer order delivery summary is enabled but CustomerOrderDeliverySummaryRenderer is not available.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
 		}

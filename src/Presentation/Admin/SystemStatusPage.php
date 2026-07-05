@@ -7,12 +7,14 @@ namespace CetechDeliveryEngine\Presentation\Admin;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\Order\CustomerOrderDeliverySummaryBuilder;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshot;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotGate;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
 use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
+use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
 use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
@@ -161,6 +163,7 @@ final class SystemStatusPage {
 		$shipping_runtime_active = $shipping_calculation_enabled && $checkout_validation_active;
 		$snapshot_flag_enabled   = $this->feature_flags->is_enabled( OrderDeliverySnapshotGate::SNAPSHOT_FLAG );
 		$snapshot_runtime_active = $snapshot_flag_enabled && $shipping_runtime_active;
+		$customer_summary_enabled = $this->feature_flags->is_enabled( CustomerOrderDeliverySummaryBuilder::SUMMARY_FLAG );
 
 		$this->render_table(
 			__( 'Runtime readiness (admin/test only)', 'cetech-woocommerce-delivery-engine' ),
@@ -212,9 +215,15 @@ final class SystemStatusPage {
 				__( 'Snapshot reader registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( OrderDeliverySnapshotReader::class ) ),
 				__( 'Snapshot integrity checker registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( OrderDeliverySnapshotIntegrity::class ) ),
 				__( 'Snapshot display mode', 'cetech-woocommerce-delivery-engine' ) => __( 'Read-only admin only', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer order delivery summary flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $customer_summary_enabled ),
+				__( 'Customer order delivery summary renderer', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $customer_summary_enabled && class_exists( CustomerOrderDeliverySummaryRenderer::class ) && function_exists( 'WC' ) ),
+				__( 'Customer summary mode', 'cetech-woocommerce-delivery-engine' ) => $customer_summary_enabled
+					? __( 'Read-only snapshot display', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Disabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Email delivery summary', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Shipment tracking timeline', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Public shipment page', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipment creation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Tracking timeline', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Public order delivery page', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipping calculation', 'cetech-woocommerce-delivery-engine' ) => $shipping_runtime_active
 					? __( 'Enabled (WooCommerce shipping rates only)', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
