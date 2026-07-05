@@ -573,6 +573,7 @@ final class Plugin {
 			static fn ( ServiceContainer $container ): DestinationZonesPage => new DestinationZonesPage(
 				$container->get( DestinationZoneRepositoryInterface::class ),
 				$container->get( DestinationRuleRepositoryInterface::class ),
+				$container->get( RateCardRepositoryInterface::class ),
 				$container->get( DestinationZoneValidator::class ),
 				$container->get( DestinationRuleValidator::class ),
 				$container->get( DestinationZoneTestMatcher::class ),

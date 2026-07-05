@@ -7,6 +7,7 @@ namespace CetechDeliveryEngine\Presentation\Admin;
 use CetechDeliveryEngine\Domain\Enum\DestinationRuleMatchMode;
 use CetechDeliveryEngine\Domain\Enum\DestinationRuleType;
 use CetechDeliveryEngine\Domain\Enum\RecordStatus;
+use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationRuleValidator;
@@ -27,6 +28,7 @@ final class DestinationZonesPage {
 	public function __construct(
 		private DestinationZoneRepositoryInterface $zone_repository,
 		private DestinationRuleRepositoryInterface $rule_repository,
+		private RateCardRepositoryInterface $rate_card_repository,
 		private DestinationZoneValidator $zone_validator,
 		private DestinationRuleValidator $rule_validator,
 		private DestinationZoneTestMatcher $test_matcher,
@@ -66,61 +68,118 @@ final class DestinationZonesPage {
 	}
 
 	private function render_list(): void {
-		AdminPageRenderer::open_wrap( __( 'Destination Zones', 'cetech-woocommerce-delivery-engine' ) );
-		AdminPageRenderer::add_new_button( self::SLUG, __( 'Add New', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Delivery coverage', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Delivery Zones', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Delivery zones are the places where delivery is available. Each zone needs at least one rate card before customers can see a delivery price for that area.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Add Delivery Zone', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) ),
+				'class' => 'primary',
+			]
+		);
+		AdminPageLayout::render_example(
+			__( 'Greater Accra, Madina, Kumasi Metro', 'cetech-woocommerce-delivery-engine' )
+		);
 
-		$zones = $this->zone_repository->list( [ 'limit' => 500 ] );
-		$rows  = [];
+		$zones              = $this->zone_repository->list( [ 'limit' => 500 ] );
+		$rate_cards_by_zone = $this->active_rate_cards_by_zone();
+		$zones_without_rates = 0;
 
 		foreach ( $zones as $zone ) {
 			$zone_id = (int) ( $zone['id'] ?? 0 );
-			$rules   = $this->rule_repository->listByZoneId( $zone_id );
-			$summary = $this->summarize_rules( $rules );
 
-			$rows[] = [
-				(string) $zone_id,
-				esc_html( (string) ( $zone['internal_code'] ?? '' ) ),
-				esc_html( (string) ( $zone['internal_name'] ?? '' ) ),
-				esc_html( $summary['country'] ),
-				esc_html( $summary['region'] ),
-				esc_html( $summary['city'] ),
-				esc_html( (string) ( $zone['priority'] ?? '' ) ),
-				esc_html( ! empty( $zone['is_fallback'] ) ? __( 'Yes', 'cetech-woocommerce-delivery-engine' ) : __( 'No', 'cetech-woocommerce-delivery-engine' ) ),
-				esc_html( ! empty( $zone['remote_area_flag'] ) ? __( 'Yes', 'cetech-woocommerce-delivery-engine' ) : __( 'No', 'cetech-woocommerce-delivery-engine' ) ),
-				esc_html( (string) ( $zone['status'] ?? '' ) ),
-				esc_html( (string) ( $zone['updated_at'] ?? '' ) ),
-				$this->render_actions( $zone_id ),
-			];
+			if ( $zone_id > 0 && RecordStatus::Active->value === (string) ( $zone['status'] ?? '' ) && ! isset( $rate_cards_by_zone[ $zone_id ] ) ) {
+				++$zones_without_rates;
+			}
 		}
 
-		AdminPageRenderer::render_table(
+		AdminPageLayout::render_summary_stats(
 			[
-				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Code', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Name', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Country', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Region/state', 'cetech-woocommerce-delivery-engine' ),
-				__( 'City/metro', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Priority', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Fallback', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Remote area', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
-			],
-			$rows
+				[
+					'label' => __( 'Total zones', 'cetech-woocommerce-delivery-engine' ),
+					'value' => count( $zones ),
+					'empty' => [] === $zones,
+				],
+				[
+					'label' => __( 'Zones without pricing', 'cetech-woocommerce-delivery-engine' ),
+					'value' => $zones_without_rates,
+					'empty' => 0 === $zones_without_rates,
+				],
+			]
 		);
 
+		if ( $zones_without_rates > 0 ) {
+			AdminPageLayout::render_warning(
+				__( 'Some zones have no rate cards', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customers may not see delivery prices for these areas until you add rate cards that match each zone.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Manage rate cards', 'cetech-woocommerce-delivery-engine' ),
+				AdminPageRenderer::list_url( RateCardsPage::SLUG )
+			);
+		}
+
+		if ( [] === $zones ) {
+			AdminPageLayout::render_empty_state(
+				__( 'No delivery zones yet', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Create a zone for each area you deliver to, then add rate cards to set prices.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add your first zone', 'cetech-woocommerce-delivery-engine' ),
+				add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) )
+			);
+		} else {
+			AdminPageLayout::open_section(
+				__( 'All delivery zones', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Check that each active zone has pricing before going live.', 'cetech-woocommerce-delivery-engine' )
+			);
+
+			$rows = [];
+
+			foreach ( $zones as $zone ) {
+				$zone_id = (int) ( $zone['id'] ?? 0 );
+				$rules   = $this->rule_repository->listByZoneId( $zone_id );
+				$summary = $this->summarize_rules( $rules );
+				$rate_count = $rate_cards_by_zone[ $zone_id ] ?? 0;
+
+				$rows[] = [
+					esc_html( (string) ( $zone['internal_name'] ?? '' ) ),
+					esc_html( (string) ( $zone['internal_code'] ?? '' ) ),
+					esc_html( $summary['country'] ),
+					esc_html( $summary['city'] ),
+					AdminUiHelper::rate_card_coverage_badge( $rate_count ),
+					AdminUiHelper::record_status_badge( (string) ( $zone['status'] ?? '' ) ),
+					$this->render_actions( $zone_id ),
+				];
+			}
+
+			AdminPageRenderer::render_table(
+				[
+					__( 'Zone name', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Country', 'cetech-woocommerce-delivery-engine' ),
+					__( 'City or area', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Rate cards', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
+				],
+				$rows,
+				true
+			);
+
+			AdminPageLayout::close_section();
+		}
+
+		AdminPageLayout::open_advanced( __( 'Zone matching test (for staff)', 'cetech-woocommerce-delivery-engine' ) );
 		$this->render_test_tool();
-		AdminPageRenderer::close_wrap();
+		AdminPageLayout::close_advanced();
+		AdminPageLayout::close_page();
 	}
 
 	private function render_test_tool(): void {
 		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_test' );
 
-		echo '<h2>' . esc_html__( 'Test destination match', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<h3>' . esc_html__( 'Test which zone matches an address', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
 		echo '<p class="description">' . esc_html__(
-			'Read-only admin test against stored zones and rules. Does not change data or calculate prices.',
+			'Enter a sample address to see which delivery zone would match. Read-only — does not change data or prices.',
 			'cetech-woocommerce-delivery-engine'
 		) . '</p>';
 
@@ -175,10 +234,20 @@ final class DestinationZonesPage {
 		}
 
 		$title = $is_edit
-			? __( 'Edit Destination Zone', 'cetech-woocommerce-delivery-engine' )
-			: __( 'Add Destination Zone', 'cetech-woocommerce-delivery-engine' );
+			? __( 'Edit Delivery Zone', 'cetech-woocommerce-delivery-engine' )
+			: __( 'Add Delivery Zone', 'cetech-woocommerce-delivery-engine' );
 
-		AdminPageRenderer::open_wrap( $title );
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Delivery coverage', 'cetech-woocommerce-delivery-engine' ),
+			$title,
+			__( 'Define an area where delivery is available. Add matching rules so customer addresses map to this zone.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Back to zones', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( self::SLUG ),
+				'class' => 'secondary',
+			]
+		);
 
 		echo '<form method="post" action="">';
 		AdminFormHelper::nonce_field( self::ACTION_SAVE );
@@ -188,46 +257,79 @@ final class DestinationZonesPage {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
 		}
 
-		echo '<table class="form-table" role="presentation"><tbody>';
-		AdminFormHelper::text_field( 'code', __( 'Code', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['code'] ?? '' ), true );
-		AdminFormHelper::text_field( 'name', __( 'Name', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['name'] ?? '' ), true );
+		AdminPageLayout::open_form_panel(
+			__( 'Zone details', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Give the zone a clear name your team will recognize.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'name',
+			__( 'Zone name', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['name'] ?? '' ),
+			true,
+			__( 'Example: Greater Accra', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'code',
+			__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['code'] ?? '' ),
+			true,
+			__( 'Example: gh-accra', 'cetech-woocommerce-delivery-engine' )
+		);
 		AdminFormHelper::text_field(
 			'public_label',
-			__( 'Public label', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Customer-facing label', 'cetech-woocommerce-delivery-engine' ),
 			(string) ( $record['public_label'] ?? '' ),
 			false,
-			__( 'Optional customer-safe label stored in public_label.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Optional label shown to customers when relevant.', 'cetech-woocommerce-delivery-engine' )
 		);
-		AdminFormHelper::number_field( 'priority', __( 'Priority', 'cetech-woocommerce-delivery-engine' ), isset( $record['priority'] ) ? (int) $record['priority'] : 100 );
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_status_options(),
+			(string) ( $record['status'] ?? RecordStatus::Active->value ),
+			__( 'Inactive zones are kept for reference but are not used for new orders.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_advanced( __( 'Matching rules and options', 'cetech-woocommerce-delivery-engine' ) );
+		echo '<table class="form-table cetech-de-form-table" role="presentation"><tbody>';
+		AdminFormHelper::number_field(
+			'priority',
+			__( 'Priority', 'cetech-woocommerce-delivery-engine' ),
+			isset( $record['priority'] ) ? (int) $record['priority'] : 100,
+			0,
+			__( 'Lower numbers are checked first when more than one zone could match.', 'cetech-woocommerce-delivery-engine' )
+		);
 		AdminFormHelper::checkbox_field(
 			'is_fallback',
 			__( 'Fallback zone', 'cetech-woocommerce-delivery-engine' ),
 			! empty( $record['is_fallback'] ),
-			__( 'Used when no other zone matches during admin testing.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Used when no other zone matches during address lookup.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::checkbox_field(
 			'is_remote_area',
 			__( 'Remote area', 'cetech-woocommerce-delivery-engine' ),
-			! empty( $record['is_remote_area'] )
+			! empty( $record['is_remote_area'] ),
+			__( 'Mark this zone as a remote or hard-to-reach area for your team.', 'cetech-woocommerce-delivery-engine' )
 		);
-		AdminFormHelper::select_field( 'status', __( 'Status', 'cetech-woocommerce-delivery-engine' ), $this->status_options(), (string) ( $record['status'] ?? RecordStatus::Active->value ) );
 		echo '</tbody></table>';
-
 		$this->render_rules_section( $rules );
+		AdminPageLayout::close_advanced();
 
-		submit_button( $is_edit ? __( 'Update Zone', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Zone', 'cetech-woocommerce-delivery-engine' ) );
+		echo '<div class="cetech-de-form-actions">';
+		submit_button( $is_edit ? __( 'Save Zone', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Zone', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
-		echo '</form>';
-		AdminPageRenderer::close_wrap();
+		echo '</div></form>';
+		AdminPageLayout::close_page();
 	}
 
 	/**
 	 * @param list<array<string, mixed>> $rules
 	 */
 	private function render_rules_section( array $rules ): void {
-		echo '<h2>' . esc_html__( 'Destination Rules', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<h3>' . esc_html__( 'Address matching rules', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
 		echo '<p class="description">' . esc_html__(
-			'Geographic matching is configured through rules. All rules for a zone must match (AND). Empty rows are ignored.',
+			'Tell the system which customer addresses belong in this zone. All filled rules must match. Empty rows are ignored.',
 			'cetech-woocommerce-delivery-engine'
 		) . '</p>';
 
@@ -573,6 +675,40 @@ final class DestinationZonesPage {
 		$deactivate .= '</button></form>';
 
 		return $edit . $deactivate;
+	}
+
+	/**
+	 * @return array<int, int>
+	 */
+	private function active_rate_cards_by_zone(): array {
+		$counts = [];
+
+		foreach ( $this->rate_card_repository->list( [ 'limit' => 500 ] ) as $rate_card ) {
+			if ( RecordStatus::Active->value !== (string) ( $rate_card['status'] ?? '' ) ) {
+				continue;
+			}
+
+			$zone_id = (int) ( $rate_card['destination_zone_id'] ?? 0 );
+
+			if ( $zone_id > 0 ) {
+				$counts[ $zone_id ] = ( $counts[ $zone_id ] ?? 0 ) + 1;
+			}
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_status_options(): array {
+		$options = [];
+
+		foreach ( RecordStatus::cases() as $status ) {
+			$options[ $status->value ] = AdminUiHelper::record_status_label( $status->value );
+		}
+
+		return $options;
 	}
 
 	/**

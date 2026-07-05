@@ -22,8 +22,12 @@ final class AdminPageRenderer {
 	 * @param list<array<string, string>> $rows
 	 * @param list<string>                $headers
 	 */
-	public static function render_table( array $headers, array $rows ): void {
-		echo '<table class="widefat striped">';
+	public static function render_table( array $headers, array $rows, bool $styled = false ): void {
+		if ( $styled ) {
+			echo '<div class="cetech-de-admin-table-wrap">';
+		}
+
+		echo '<table class="widefat striped cetech-de-admin-table">';
 		echo '<thead><tr>';
 		foreach ( $headers as $header ) {
 			echo '<th scope="col">' . esc_html( $header ) . '</th>';
@@ -47,6 +51,10 @@ final class AdminPageRenderer {
 		}
 
 		echo '</tbody></table>';
+
+		if ( $styled ) {
+			echo '</div>';
+		}
 	}
 
 	public static function add_new_button( string $page_slug, string $label ): void {

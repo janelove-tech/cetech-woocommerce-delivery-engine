@@ -84,75 +84,102 @@ final class SuppliersOriginsPage {
 	}
 
 	private function render_lists(): void {
-		AdminPageRenderer::open_wrap( __( 'Suppliers & Origins', 'cetech-woocommerce-delivery-engine' ) );
-		echo '<p class="description">' . esc_html__(
-			'Private operational records for admin use only. Never shown to customers.',
-			'cetech-woocommerce-delivery-engine'
-		) . '</p>';
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Dispatch sources', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Suppliers & Origins', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Suppliers are the businesses or partners you source goods from. Origins are the physical places orders are dispatched from — such as your main store, a warehouse, a supplier location, or a pickup point.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::render_example(
+			__( 'Supplier: ABC Wholesale · Origin: Main Warehouse, Accra', 'cetech-woocommerce-delivery-engine' )
+		);
 
 		$this->render_supplier_list();
 		$this->render_origin_list();
 
-		AdminPageRenderer::close_wrap();
+		AdminPageLayout::close_page();
 	}
 
 	private function render_supplier_list(): void {
-		echo '<h2>' . esc_html__( 'Suppliers', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		AdminPageLayout::open_section(
+			__( 'Suppliers', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Private business contacts used internally. Never shown to customers.', 'cetech-woocommerce-delivery-engine' )
+		);
 		printf(
-			'<p><a href="%1$s" class="page-title-action">%2$s</a></p>',
+			'<p><a href="%1$s" class="button button-primary">%2$s</a></p>',
 			esc_url( $this->form_url( 'supplier', 'add' ) ),
 			esc_html__( 'Add Supplier', 'cetech-woocommerce-delivery-engine' )
 		);
 
 		$suppliers = $this->supplier_repository->list( [ 'limit' => 500 ] );
-		$rows      = [];
+
+		if ( [] === $suppliers ) {
+			AdminPageLayout::render_empty_state(
+				__( 'No suppliers yet', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add suppliers when you need to track where goods come from before dispatch.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add supplier', 'cetech-woocommerce-delivery-engine' ),
+				$this->form_url( 'supplier', 'add' )
+			);
+			AdminPageLayout::close_section();
+			return;
+		}
+
+		$rows = [];
 
 		foreach ( $suppliers as $supplier ) {
 			$id = (int) ( $supplier['id'] ?? 0 );
 			$rows[] = [
-				(string) $id,
-				esc_html( (string) ( $supplier['internal_code'] ?? '' ) ),
 				esc_html( (string) ( $supplier['internal_name'] ?? '' ) ),
-				'—',
-				'—',
+				esc_html( (string) ( $supplier['internal_code'] ?? '' ) ),
 				esc_html( (string) ( $supplier['contact_email'] ?? '' ) ?: '—' ),
 				esc_html( (string) ( $supplier['contact_phone'] ?? '' ) ?: '—' ),
-				'—',
-				esc_html( (string) ( $supplier['status'] ?? '' ) ),
-				esc_html( (string) ( $supplier['updated_at'] ?? '' ) ),
+				AdminUiHelper::record_status_badge( (string) ( $supplier['status'] ?? '' ) ),
 				$this->render_supplier_actions( $id ),
 			];
 		}
 
 		AdminPageRenderer::render_table(
 			[
-				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Code', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Internal name', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Supplier type', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Contact name', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Contact email', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Contact phone', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Country', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Supplier name', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Email', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Phone', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
 			],
-			$rows
+			$rows,
+			true
 		);
+
+		AdminPageLayout::close_section();
 	}
 
 	private function render_origin_list(): void {
-		echo '<h2>' . esc_html__( 'Origins', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		AdminPageLayout::open_section(
+			__( 'Origins', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Places orders ship from. Each origin belongs to one supplier.', 'cetech-woocommerce-delivery-engine' )
+		);
 		printf(
-			'<p><a href="%1$s" class="page-title-action">%2$s</a></p>',
+			'<p><a href="%1$s" class="button button-primary">%2$s</a></p>',
 			esc_url( $this->form_url( 'origin', 'add' ) ),
 			esc_html__( 'Add Origin', 'cetech-woocommerce-delivery-engine' )
 		);
 
-		$origins    = $this->origin_repository->list( [ 'limit' => 500 ] );
-		$suppliers  = $this->supplier_name_map();
-		$rows       = [];
+		$origins   = $this->origin_repository->list( [ 'limit' => 500 ] );
+		$suppliers = $this->supplier_name_map();
+
+		if ( [] === $origins ) {
+			AdminPageLayout::render_empty_state(
+				__( 'No origins yet', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add an origin for each warehouse, store, or dispatch location your team uses.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add origin', 'cetech-woocommerce-delivery-engine' ),
+				$this->form_url( 'origin', 'add' )
+			);
+			AdminPageLayout::close_section();
+			return;
+		}
+
+		$rows = [];
 
 		foreach ( $origins as $origin ) {
 			$id          = (int) ( $origin['id'] ?? 0 );
@@ -160,48 +187,54 @@ final class SuppliersOriginsPage {
 			$address     = $this->origin_validator->decode_internal_address(
 				isset( $origin['internal_address'] ) ? (string) $origin['internal_address'] : null
 			);
+			$location    = array_filter(
+				[
+					$address['city'] ?: null,
+					$address['region'] ?: null,
+					(string) ( $origin['country_code'] ?? '' ) ?: null,
+				]
+			);
 
 			$rows[] = [
-				(string) $id,
-				esc_html( (string) ( $origin['internal_code'] ?? '' ) ),
 				esc_html( (string) ( $origin['internal_name'] ?? '' ) ),
 				esc_html( $suppliers[ $supplier_id ] ?? '—' ),
-				'—',
-				esc_html( (string) ( $origin['country_code'] ?? '' ) ?: '—' ),
-				esc_html( $address['region'] ?: '—' ),
-				esc_html( $address['city'] ?: '—' ),
-				esc_html( (string) ( $origin['status'] ?? '' ) ),
-				esc_html( (string) ( $origin['updated_at'] ?? '' ) ),
+				esc_html( [] !== $location ? implode( ', ', $location ) : '—' ),
+				AdminUiHelper::record_status_badge( (string) ( $origin['status'] ?? '' ) ),
 				$this->render_origin_actions( $id ),
 			];
 		}
 
 		AdminPageRenderer::render_table(
 			[
-				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Code', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Internal name', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Origin name', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Origin type', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Country', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Region', 'cetech-woocommerce-delivery-engine' ),
-				__( 'City', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Location', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
 			],
-			$rows
+			$rows,
+			true
 		);
+
+		AdminPageLayout::close_section();
 	}
 
 	private function render_supplier_form( bool $is_edit ): void {
 		$draft = $this->action_handler->notices()->consume_form_draft( $this->draft_key( self::DRAFT_SUPPLIER ) );
 		$record = null !== $draft ? $this->supplier_from_draft( $draft ) : $this->load_supplier_for_form( $is_edit );
 
-		AdminPageRenderer::open_wrap(
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Dispatch sources', 'cetech-woocommerce-delivery-engine' ),
 			$is_edit
 				? __( 'Edit Supplier', 'cetech-woocommerce-delivery-engine' )
-				: __( 'Add Supplier', 'cetech-woocommerce-delivery-engine' )
+				: __( 'Add Supplier', 'cetech-woocommerce-delivery-engine' ),
+			__( 'A supplier is a business or partner you source goods from. This information is for your team only.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Back to suppliers & origins', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( self::SLUG ),
+				'class' => 'secondary',
+			]
 		);
 
 		echo '<form method="post" action="">';
@@ -212,28 +245,80 @@ final class SuppliersOriginsPage {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
 		}
 
-		echo '<table class="form-table" role="presentation"><tbody>';
-		AdminFormHelper::text_field( 'code', __( 'Code', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['code'] ?? '' ), true );
-		AdminFormHelper::text_field( 'internal_name', __( 'Internal name', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['internal_name'] ?? '' ), true );
-		AdminFormHelper::text_field( 'contact_email', __( 'Contact email', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['contact_email'] ?? '' ) );
-		AdminFormHelper::text_field( 'contact_phone', __( 'Contact phone', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['contact_phone'] ?? '' ) );
-		AdminFormHelper::textarea_field( 'internal_notes', __( 'Internal notes', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['internal_notes'] ?? '' ), 4, __( 'Private admin notes only.', 'cetech-woocommerce-delivery-engine' ) );
-		AdminFormHelper::select_field( 'status', __( 'Status', 'cetech-woocommerce-delivery-engine' ), $this->status_options(), (string) ( $record['status'] ?? RecordStatus::Active->value ) );
-		echo '</tbody></table>';
-		submit_button( $is_edit ? __( 'Update Supplier', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Supplier', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageLayout::open_form_panel(
+			__( 'Supplier details', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Use names and codes your operations team will recognize.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'internal_name',
+			__( 'Supplier name', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['internal_name'] ?? '' ),
+			true,
+			__( 'Example: ABC Wholesale', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'code',
+			__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['code'] ?? '' ),
+			true,
+			__( 'Example: abc-wholesale', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'contact_email',
+			__( 'Contact email', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['contact_email'] ?? '' ),
+			false,
+			__( 'Optional email for your team.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'contact_phone',
+			__( 'Contact phone', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['contact_phone'] ?? '' ),
+			false,
+			__( 'Optional phone number for your team.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::textarea_field(
+			'internal_notes',
+			__( 'Internal notes', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['internal_notes'] ?? '' ),
+			4,
+			__( 'Private notes for administrators only.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_status_options(),
+			(string) ( $record['status'] ?? RecordStatus::Active->value ),
+			__( 'Inactive suppliers are kept for reference but not used for new setup.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
+
+		echo '<div class="cetech-de-form-actions">';
+		submit_button( $is_edit ? __( 'Save Supplier', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Supplier', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
-		echo '</form>';
-		AdminPageRenderer::close_wrap();
+		echo '</div></form>';
+		AdminPageLayout::close_page();
 	}
 
 	private function render_origin_form( bool $is_edit ): void {
 		$draft = $this->action_handler->notices()->consume_form_draft( $this->draft_key( self::DRAFT_ORIGIN ) );
 		$record = null !== $draft ? $this->origin_from_draft( $draft ) : $this->load_origin_for_form( $is_edit );
 
-		AdminPageRenderer::open_wrap(
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Dispatch sources', 'cetech-woocommerce-delivery-engine' ),
 			$is_edit
 				? __( 'Edit Origin', 'cetech-woocommerce-delivery-engine' )
-				: __( 'Add Origin', 'cetech-woocommerce-delivery-engine' )
+				: __( 'Add Origin', 'cetech-woocommerce-delivery-engine' ),
+			__( 'An origin is where goods leave from before delivery — such as a main store, warehouse, or supplier location.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Back to suppliers & origins', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( self::SLUG ),
+				'class' => 'secondary',
+			]
+		);
+		AdminPageLayout::render_example(
+			__( 'Main store, warehouse, supplier location, pickup point', 'cetech-woocommerce-delivery-engine' )
 		);
 
 		echo '<form method="post" action="">';
@@ -244,35 +329,86 @@ final class SuppliersOriginsPage {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
 		}
 
-		echo '<table class="form-table" role="presentation"><tbody>';
-		AdminFormHelper::text_field( 'code', __( 'Code', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['code'] ?? '' ), true );
-		AdminFormHelper::text_field( 'internal_name', __( 'Internal name', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['internal_name'] ?? '' ), true );
+		AdminPageLayout::open_form_panel(
+			__( 'Origin details', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Link this dispatch location to a supplier and give it a clear name.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'internal_name',
+			__( 'Origin name', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['internal_name'] ?? '' ),
+			true,
+			__( 'Example: Main Warehouse', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'code',
+			__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['code'] ?? '' ),
+			true,
+			__( 'Example: main-warehouse-accra', 'cetech-woocommerce-delivery-engine' )
+		);
 		AdminFormHelper::select_field(
 			'supplier_id',
 			__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
 			$this->supplier_options(),
 			(string) ( $record['supplier_id'] ?? '' ),
-			__( 'Required. Links this origin to a supplier.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Required. Every origin belongs to one supplier.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_status_options(),
+			(string) ( $record['status'] ?? RecordStatus::Active->value )
+		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_form_panel(
+			__( 'Location', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Where this origin is physically located.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::text_field(
 			'country_code',
 			__( 'Country code', 'cetech-woocommerce-delivery-engine' ),
 			(string) ( $record['country_code'] ?? '' ),
 			false,
-			__( '2-letter ISO code.', 'cetech-woocommerce-delivery-engine' )
+			__( '2-letter code. Example: GH', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::text_field( 'region', __( 'Region', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['region'] ?? '' ) );
 		AdminFormHelper::text_field( 'city', __( 'City', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['city'] ?? '' ) );
-		AdminFormHelper::textarea_field( 'address_summary', __( 'Address summary', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['address_summary'] ?? '' ) );
-		AdminFormHelper::number_field( 'dispatch_lead_days_min', __( 'Dispatch lead min days', 'cetech-woocommerce-delivery-engine' ), $record['dispatch_lead_days_min'] ?? null );
-		AdminFormHelper::number_field( 'dispatch_lead_days_max', __( 'Dispatch lead max days', 'cetech-woocommerce-delivery-engine' ), $record['dispatch_lead_days_max'] ?? null );
-		AdminFormHelper::textarea_field( 'internal_notes', __( 'Internal notes', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['internal_notes'] ?? '' ), 4, __( 'Private admin notes only.', 'cetech-woocommerce-delivery-engine' ) );
-		AdminFormHelper::select_field( 'status', __( 'Status', 'cetech-woocommerce-delivery-engine' ), $this->status_options(), (string) ( $record['status'] ?? RecordStatus::Active->value ) );
+		AdminFormHelper::textarea_field(
+			'address_summary',
+			__( 'Address summary', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['address_summary'] ?? '' ),
+			3,
+			__( 'A short address your team can scan quickly.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_advanced( __( 'Dispatch timing and notes', 'cetech-woocommerce-delivery-engine' ) );
+		echo '<table class="form-table cetech-de-form-table" role="presentation"><tbody>';
+		AdminFormHelper::number_field(
+			'dispatch_lead_days_min',
+			__( 'Dispatch lead min days', 'cetech-woocommerce-delivery-engine' ),
+			$record['dispatch_lead_days_min'] ?? null,
+			0,
+			__( 'Minimum days before goods leave this origin.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field( 'dispatch_lead_days_max', __( 'Dispatch lead max days', 'cetech-woocommerce-delivery-engine' ), $record['dispatch_lead_days_max'] ?? null, 0 );
+		AdminFormHelper::textarea_field(
+			'internal_notes',
+			__( 'Internal notes', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['internal_notes'] ?? '' ),
+			4,
+			__( 'Private notes for administrators only.', 'cetech-woocommerce-delivery-engine' )
+		);
 		echo '</tbody></table>';
-		submit_button( $is_edit ? __( 'Update Origin', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Origin', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageLayout::close_advanced();
+
+		echo '<div class="cetech-de-form-actions">';
+		submit_button( $is_edit ? __( 'Save Origin', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Origin', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
-		echo '</form>';
-		AdminPageRenderer::close_wrap();
+		echo '</div></form>';
+		AdminPageLayout::close_page();
 	}
 
 	private function handle_save_supplier(): void {
@@ -760,6 +896,19 @@ final class SuppliersOriginsPage {
 					(string) ( $supplier['internal_code'] ?? '' )
 				);
 			}
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_status_options(): array {
+		$options = [];
+
+		foreach ( RecordStatus::cases() as $status ) {
+			$options[ $status->value ] = AdminUiHelper::record_status_label( $status->value );
 		}
 
 		return $options;

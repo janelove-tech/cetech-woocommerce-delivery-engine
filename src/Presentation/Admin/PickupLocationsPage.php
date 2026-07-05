@@ -51,47 +51,103 @@ final class PickupLocationsPage {
 	}
 
 	private function render_list(): void {
-		AdminPageRenderer::open_wrap( __( 'Pickup Locations', 'cetech-woocommerce-delivery-engine' ) );
-		AdminPageRenderer::add_new_button( self::SLUG, __( 'Add New', 'cetech-woocommerce-delivery-engine' ) );
-
-		$records = $this->repository->list( [ 'limit' => 500 ] );
-		$rows    = [];
-
-		foreach ( $records as $record ) {
-			$id      = (int) ( $record['id'] ?? 0 );
-			$address = $this->validator->decode_public_address( isset( $record['public_address'] ) ? (string) $record['public_address'] : null );
-
-			$rows[] = [
-				(string) $id,
-				esc_html( (string) ( $record['internal_code'] ?? '' ) ),
-				esc_html( (string) ( $record['location_name'] ?? '' ) ),
-				esc_html( $this->validator->address_summary( isset( $record['public_address'] ) ? (string) $record['public_address'] : null ) ),
-				esc_html( $address['city'] ?: '—' ),
-				esc_html( $address['region'] ?: '—' ),
-				esc_html( $address['country_code'] ?: '—' ),
-				esc_html( (string) ( $record['status'] ?? '' ) ),
-				esc_html( (string) ( $record['updated_at'] ?? '' ) ),
-				$this->render_actions( $id ),
-			];
-		}
-
-		AdminPageRenderer::render_table(
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Customer pickup', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Pickup Locations', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Pickup locations are places where customers or staff can collect orders instead of having them delivered.', 'cetech-woocommerce-delivery-engine' ),
 			[
-				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Code', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Name', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Address summary', 'cetech-woocommerce-delivery-engine' ),
-				__( 'City', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Region', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Country', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
-			],
-			$rows
+				'label' => __( 'Add Pickup Location', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) ),
+				'class' => 'primary',
+			]
 		);
 
-		AdminPageRenderer::close_wrap();
+		$records = $this->repository->list( [ 'limit' => 500 ] );
+		$active  = 0;
+
+		foreach ( $records as $record ) {
+			if ( RecordStatus::Active->value === (string) ( $record['status'] ?? '' ) ) {
+				++$active;
+			}
+		}
+
+		AdminPageLayout::render_summary_stats(
+			[
+				[
+					'label' => __( 'Total locations', 'cetech-woocommerce-delivery-engine' ),
+					'value' => count( $records ),
+					'empty' => [] === $records,
+				],
+				[
+					'label' => __( 'Active locations', 'cetech-woocommerce-delivery-engine' ),
+					'value' => $active,
+					'empty' => 0 === $active,
+				],
+			]
+		);
+
+		if ( [] === $records ) {
+			AdminPageLayout::render_empty_state(
+				__( 'No pickup locations yet', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add a location when customers can collect orders from your store, branch, or pickup point.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add pickup location', 'cetech-woocommerce-delivery-engine' ),
+				add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) )
+			);
+		} else {
+			AdminPageLayout::open_section(
+				__( 'All pickup locations', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Address and contact details help staff and customers find each location quickly.', 'cetech-woocommerce-delivery-engine' )
+			);
+
+			$rows = [];
+
+			foreach ( $records as $record ) {
+				$id      = (int) ( $record['id'] ?? 0 );
+				$address = $this->validator->decode_public_address( isset( $record['public_address'] ) ? (string) $record['public_address'] : null );
+
+				$rows[] = [
+					esc_html( (string) ( $record['location_name'] ?? '' ) ),
+					esc_html( $this->validator->address_summary( isset( $record['public_address'] ) ? (string) $record['public_address'] : null ) ),
+					$this->render_contact_cell(
+						(string) ( $record['contact_phone'] ?? '' ),
+						(string) ( $record['contact_email'] ?? '' )
+					),
+					AdminUiHelper::record_status_badge( (string) ( $record['status'] ?? '' ) ),
+					$this->render_actions( $id ),
+				];
+			}
+
+			AdminPageRenderer::render_table(
+				[
+					__( 'Location name', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Address', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Contact', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
+				],
+				$rows,
+				true
+			);
+
+			AdminPageLayout::close_section();
+		}
+
+		AdminPageLayout::close_page();
+	}
+
+	private function render_contact_cell( string $phone, string $email ): string {
+		$parts = [];
+
+		if ( '' !== trim( $phone ) ) {
+			$parts[] = '<span class="cetech-de-contact-line">' . esc_html( $phone ) . '</span>';
+		}
+
+		if ( '' !== trim( $email ) ) {
+			$parts[] = '<span class="cetech-de-contact-line">' . esc_html( $email ) . '</span>';
+		}
+
+		return [] !== $parts ? implode( '', $parts ) : '—';
 	}
 
 	private function render_form( bool $is_edit ): void {
@@ -107,7 +163,17 @@ final class PickupLocationsPage {
 			? __( 'Edit Pickup Location', 'cetech-woocommerce-delivery-engine' )
 			: __( 'Add Pickup Location', 'cetech-woocommerce-delivery-engine' );
 
-		AdminPageRenderer::open_wrap( $title );
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Customer pickup', 'cetech-woocommerce-delivery-engine' ),
+			$title,
+			__( 'Add the address and contact details customers need to collect their order.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Back to pickup locations', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( self::SLUG ),
+				'class' => 'secondary',
+			]
+		);
 
 		echo '<form method="post" action="">';
 		AdminFormHelper::nonce_field( self::ACTION_SAVE );
@@ -117,9 +183,37 @@ final class PickupLocationsPage {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
 		}
 
-		echo '<table class="form-table" role="presentation"><tbody>';
-		AdminFormHelper::text_field( 'code', __( 'Code', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['code'] ?? '' ), true );
-		AdminFormHelper::text_field( 'location_name', __( 'Location name', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['location_name'] ?? '' ), true );
+		AdminPageLayout::open_form_panel(
+			__( 'Location name', 'cetech-woocommerce-delivery-engine' ),
+			__( 'How customers and staff will recognize this pickup point.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'location_name',
+			__( 'Location name', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['location_name'] ?? '' ),
+			true,
+			__( 'Example: CETECH Main Store', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'code',
+			__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['code'] ?? '' ),
+			true,
+			__( 'Example: main-store-pickup', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_status_options(),
+			(string) ( $record['status'] ?? RecordStatus::Active->value ),
+			__( 'Inactive locations are hidden from new pickup selections.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_form_panel(
+			__( 'Address', 'cetech-woocommerce-delivery-engine' ),
+			__( 'The physical address where customers collect their orders.', 'cetech-woocommerce-delivery-engine' )
+		);
 		AdminFormHelper::text_field( 'address_line_1', __( 'Address line 1', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['address_line_1'] ?? '' ) );
 		AdminFormHelper::text_field( 'address_line_2', __( 'Address line 2', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['address_line_2'] ?? '' ) );
 		AdminFormHelper::text_field( 'city', __( 'City', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['city'] ?? '' ) );
@@ -129,27 +223,50 @@ final class PickupLocationsPage {
 			__( 'Country code', 'cetech-woocommerce-delivery-engine' ),
 			(string) ( $record['country_code'] ?? '' ),
 			false,
-			__( '2-letter ISO code.', 'cetech-woocommerce-delivery-engine' )
+			__( '2-letter code. Example: GH', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::text_field( 'postcode', __( 'Postcode', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['postcode'] ?? '' ) );
-		AdminFormHelper::text_field( 'contact_phone', __( 'Phone', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['contact_phone'] ?? '' ) );
-		AdminFormHelper::text_field( 'contact_email', __( 'Email', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['contact_email'] ?? '' ) );
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_form_panel(
+			__( 'Contact and pickup instructions', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Help customers know when and how to collect their order.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'contact_phone',
+			__( 'Phone', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['contact_phone'] ?? '' ),
+			false,
+			__( 'Shown to customers when they need to call about pickup.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'contact_email',
+			__( 'Email', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['contact_email'] ?? '' ),
+			false,
+			__( 'Optional contact email for pickup questions.', 'cetech-woocommerce-delivery-engine' )
+		);
 		AdminFormHelper::textarea_field(
 			'public_opening_hours',
 			__( 'Opening hours', 'cetech-woocommerce-delivery-engine' ),
-			(string) ( $record['public_opening_hours'] ?? '' )
+			(string) ( $record['public_opening_hours'] ?? '' ),
+			3,
+			__( 'Example: Mon–Fri 9:00 AM – 5:00 PM', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::textarea_field(
 			'public_pickup_instructions',
 			__( 'Pickup instructions', 'cetech-woocommerce-delivery-engine' ),
-			(string) ( $record['public_pickup_instructions'] ?? '' )
+			(string) ( $record['public_pickup_instructions'] ?? '' ),
+			4,
+			__( 'Tell customers where to go and what to bring when collecting.', 'cetech-woocommerce-delivery-engine' )
 		);
-		AdminFormHelper::select_field( 'status', __( 'Status', 'cetech-woocommerce-delivery-engine' ), $this->status_options(), (string) ( $record['status'] ?? RecordStatus::Active->value ) );
-		echo '</tbody></table>';
-		submit_button( $is_edit ? __( 'Update Location', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Location', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageLayout::close_form_panel();
+
+		echo '<div class="cetech-de-form-actions">';
+		submit_button( $is_edit ? __( 'Save Location', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Location', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
-		echo '</form>';
-		AdminPageRenderer::close_wrap();
+		echo '</div></form>';
+		AdminPageLayout::close_page();
 	}
 
 	private function handle_save(): void {
@@ -372,6 +489,19 @@ final class PickupLocationsPage {
 		$deactivate .= '</button></form>';
 
 		return $edit . $deactivate;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_status_options(): array {
+		$options = [];
+
+		foreach ( RecordStatus::cases() as $status ) {
+			$options[ $status->value ] = AdminUiHelper::record_status_label( $status->value );
+		}
+
+		return $options;
 	}
 
 	/**

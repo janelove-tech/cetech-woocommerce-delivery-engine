@@ -53,47 +53,87 @@ final class DeliveryOffersPage {
 	}
 
 	private function render_list(): void {
-		AdminPageRenderer::open_wrap( __( 'Delivery Offers', 'cetech-woocommerce-delivery-engine' ) );
-		AdminPageRenderer::add_new_button( self::SLUG, __( 'Add New', 'cetech-woocommerce-delivery-engine' ) );
-
-		$records = $this->repository->list( [ 'limit' => 500 ] );
-		$rows    = [];
-
-		foreach ( $records as $record ) {
-			$id = (int) ( $record['id'] ?? 0 );
-			$rows[] = [
-				(string) $id,
-				esc_html( (string) ( $record['internal_code'] ?? '' ) ),
-				esc_html( (string) ( $record['public_label'] ?? '' ) ),
-				esc_html( (string) ( $record['route'] ?? '' ) ),
-				esc_html( (string) ( $record['service_level'] ?? '' ) ),
-				esc_html( (string) ( $record['carrier_visibility'] ?? '' ) ),
-				esc_html( (string) ( $record['carrier_name'] ?? '' ) ),
-				esc_html( (string) ( $record['status'] ?? '' ) ),
-				esc_html( (string) ( $record['display_priority'] ?? '' ) ),
-				esc_html( (string) ( $record['updated_at'] ?? '' ) ),
-				$this->render_actions( $id ),
-			];
-		}
-
-		AdminPageRenderer::render_table(
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Delivery services', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Delivery Offers', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Delivery offers are the services customers or staff can choose at checkout, such as Same-Day, Next-Day, Standard Delivery, or Pickup.', 'cetech-woocommerce-delivery-engine' ),
 			[
-				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Code', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Public label', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Route', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Service level', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Carrier visibility', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Carrier display name', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Display priority', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
-			],
-			$rows
+				'label' => __( 'Add Delivery Offer', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) ),
+				'class' => 'primary',
+			]
+		);
+		AdminPageLayout::render_example(
+			__( 'Same-Day, Next-Day, Standard Delivery, Pickup', 'cetech-woocommerce-delivery-engine' )
 		);
 
-		AdminPageRenderer::close_wrap();
+		$records = $this->repository->list( [ 'limit' => 500 ] );
+		$active  = 0;
+
+		foreach ( $records as $record ) {
+			if ( RecordStatus::Active->value === (string) ( $record['status'] ?? '' ) ) {
+				++$active;
+			}
+		}
+
+		AdminPageLayout::render_summary_stats(
+			[
+				[
+					'label' => __( 'Total offers', 'cetech-woocommerce-delivery-engine' ),
+					'value' => count( $records ),
+					'empty' => [] === $records,
+				],
+				[
+					'label' => __( 'Active offers', 'cetech-woocommerce-delivery-engine' ),
+					'value' => $active,
+					'empty' => 0 === $active,
+				],
+			]
+		);
+
+		if ( [] === $records ) {
+			AdminPageLayout::render_empty_state(
+				__( 'No delivery offers yet', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Create the delivery services your customers can choose, then connect them to rate cards for pricing.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add your first offer', 'cetech-woocommerce-delivery-engine' ),
+				add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) )
+			);
+		} else {
+			AdminPageLayout::open_section(
+				__( 'All delivery offers', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The public label is what customers see at checkout.', 'cetech-woocommerce-delivery-engine' )
+			);
+
+			$rows = [];
+
+			foreach ( $records as $record ) {
+				$id = (int) ( $record['id'] ?? 0 );
+				$rows[] = [
+					esc_html( (string) ( $record['public_label'] ?? '' ) ),
+					esc_html( (string) ( $record['internal_code'] ?? '' ) ),
+					esc_html( $this->route_label( (string) ( $record['route'] ?? '' ) ) ),
+					AdminUiHelper::record_status_badge( (string) ( $record['status'] ?? '' ) ),
+					$this->render_actions( $id ),
+				];
+			}
+
+			AdminPageRenderer::render_table(
+				[
+					__( 'Customer-facing name', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Delivery type', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
+				],
+				$rows,
+				true
+			);
+
+			AdminPageLayout::close_section();
+		}
+
+		AdminPageLayout::close_page();
 	}
 
 	private function render_form( bool $is_edit ): void {
@@ -109,7 +149,20 @@ final class DeliveryOffersPage {
 			? __( 'Edit Delivery Offer', 'cetech-woocommerce-delivery-engine' )
 			: __( 'Add Delivery Offer', 'cetech-woocommerce-delivery-engine' );
 
-		AdminPageRenderer::open_wrap( $title );
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Delivery services', 'cetech-woocommerce-delivery-engine' ),
+			$title,
+			__( 'Describe a delivery service customers can choose. Use a clear name they will recognize at checkout.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Back to offers', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( self::SLUG ),
+				'class' => 'secondary',
+			]
+		);
+		AdminPageLayout::render_example(
+			__( 'Same-Day, Next-Day, Standard Delivery, Pickup', 'cetech-woocommerce-delivery-engine' )
+		);
 
 		echo '<form method="post" action="">';
 		AdminFormHelper::nonce_field( self::ACTION_SAVE );
@@ -119,40 +172,97 @@ final class DeliveryOffersPage {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
 		}
 
-		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminPageLayout::open_form_panel(
+			__( 'What customers see', 'cetech-woocommerce-delivery-engine' ),
+			__( 'These details appear when customers choose how they want their order delivered.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'public_label',
+			__( 'Customer-facing name', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['public_label'] ?? '' ),
+			true,
+			__( 'Example: Same-Day Delivery', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::textarea_field(
+			'description',
+			__( 'Short description', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['description'] ?? '' ),
+			3,
+			__( 'Optional helper text shown to customers.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'route',
+			__( 'Delivery type', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_route_options(),
+			(string) ( $record['route'] ?? '' ),
+			__( 'Whether this is home delivery or customer pickup.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
 
-		AdminFormHelper::text_field( 'code', __( 'Code', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['code'] ?? '' ), true );
-		AdminFormHelper::text_field( 'public_label', __( 'Public label', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['public_label'] ?? '' ), true );
-		AdminFormHelper::textarea_field( 'description', __( 'Description', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['description'] ?? '' ) );
-		AdminFormHelper::select_field( 'route', __( 'Route', 'cetech-woocommerce-delivery-engine' ), $this->route_options(), (string) ( $record['route'] ?? '' ) );
-		AdminFormHelper::text_field( 'service_level', __( 'Service level', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['service_level'] ?? '' ) );
+		AdminPageLayout::open_form_panel(
+			__( 'Internal reference', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Used by your team when linking offers to rate cards.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'code',
+			__( 'Reference code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['code'] ?? '' ),
+			true,
+			__( 'Example: same-day-delivery', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'service_level',
+			__( 'Service level note', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['service_level'] ?? '' ),
+			false,
+			__( 'Optional internal note, such as express or economy.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field(
+			'display_priority',
+			__( 'Sort order', 'cetech-woocommerce-delivery-engine' ),
+			$record['display_priority'] ?? 100,
+			0,
+			__( 'Lower numbers appear first when multiple offers are shown.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_status_options(),
+			(string) ( $record['status'] ?? RecordStatus::Active->value ),
+			__( 'Inactive offers are hidden from new checkout selections.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_advanced( __( 'Timing and carrier details', 'cetech-woocommerce-delivery-engine' ) );
+		echo '<table class="form-table cetech-de-form-table" role="presentation"><tbody>';
+		AdminFormHelper::number_field( 'processing_min_days', __( 'Processing min days', 'cetech-woocommerce-delivery-engine' ), $record['processing_min_days'] ?? null, 0, __( 'Minimum days to prepare the order before dispatch.', 'cetech-woocommerce-delivery-engine' ) );
+		AdminFormHelper::number_field( 'processing_max_days', __( 'Processing max days', 'cetech-woocommerce-delivery-engine' ), $record['processing_max_days'] ?? null, 0 );
+		AdminFormHelper::number_field( 'transit_min_days', __( 'Transit min days', 'cetech-woocommerce-delivery-engine' ), $record['transit_min_days'] ?? null, 0, __( 'Minimum days in transit after dispatch.', 'cetech-woocommerce-delivery-engine' ) );
+		AdminFormHelper::number_field( 'transit_max_days', __( 'Transit max days', 'cetech-woocommerce-delivery-engine' ), $record['transit_max_days'] ?? null, 0 );
+		AdminFormHelper::number_field( 'final_mile_min_days', __( 'Final mile min days', 'cetech-woocommerce-delivery-engine' ), $record['final_mile_min_days'] ?? null, 0 );
+		AdminFormHelper::number_field( 'final_mile_max_days', __( 'Final mile max days', 'cetech-woocommerce-delivery-engine' ), $record['final_mile_max_days'] ?? null, 0 );
 		AdminFormHelper::select_field(
 			'carrier_visibility',
 			__( 'Carrier visibility', 'cetech-woocommerce-delivery-engine' ),
 			$this->carrier_visibility_options(),
-			(string) ( $record['carrier_visibility'] ?? CarrierVisibility::AssignedByStore->value )
+			(string) ( $record['carrier_visibility'] ?? CarrierVisibility::AssignedByStore->value ),
+			__( 'How carrier information is shown internally.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::text_field(
 			'carrier_display_name',
 			__( 'Carrier display name', 'cetech-woocommerce-delivery-engine' ),
 			(string) ( $record['carrier_display_name'] ?? '' ),
 			false,
-			__( 'Required when carrier visibility is Named.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Required when carrier visibility is set to Named.', 'cetech-woocommerce-delivery-engine' )
 		);
-		AdminFormHelper::number_field( 'processing_min_days', __( 'Processing min days', 'cetech-woocommerce-delivery-engine' ), $record['processing_min_days'] ?? null );
-		AdminFormHelper::number_field( 'processing_max_days', __( 'Processing max days', 'cetech-woocommerce-delivery-engine' ), $record['processing_max_days'] ?? null );
-		AdminFormHelper::number_field( 'transit_min_days', __( 'Transit min days', 'cetech-woocommerce-delivery-engine' ), $record['transit_min_days'] ?? null );
-		AdminFormHelper::number_field( 'transit_max_days', __( 'Transit max days', 'cetech-woocommerce-delivery-engine' ), $record['transit_max_days'] ?? null );
-		AdminFormHelper::number_field( 'final_mile_min_days', __( 'Final mile min days', 'cetech-woocommerce-delivery-engine' ), $record['final_mile_min_days'] ?? null );
-		AdminFormHelper::number_field( 'final_mile_max_days', __( 'Final mile max days', 'cetech-woocommerce-delivery-engine' ), $record['final_mile_max_days'] ?? null );
-		AdminFormHelper::number_field( 'display_priority', __( 'Display priority', 'cetech-woocommerce-delivery-engine' ), $record['display_priority'] ?? 100 );
-		AdminFormHelper::select_field( 'status', __( 'Status', 'cetech-woocommerce-delivery-engine' ), $this->status_options(), (string) ( $record['status'] ?? RecordStatus::Active->value ) );
-
 		echo '</tbody></table>';
-		submit_button( $is_edit ? __( 'Update Offer', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Offer', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageLayout::close_advanced();
+
+		echo '<div class="cetech-de-form-actions">';
+		submit_button( $is_edit ? __( 'Save Offer', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Offer', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
-		echo '</form>';
-		AdminPageRenderer::close_wrap();
+		echo '</div></form>';
+		AdminPageLayout::close_page();
 	}
 
 	private function handle_save(): void {
@@ -389,6 +499,42 @@ final class DeliveryOffersPage {
 		$deactivate .= '</button></form>';
 
 		return $edit . $deactivate;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_route_options(): array {
+		$options = [];
+
+		foreach ( DeliveryRoute::cases() as $route ) {
+			$options[ $route->value ] = $this->route_label( $route->value );
+		}
+
+		return $options;
+	}
+
+	private function route_label( string $route ): string {
+		return match ( $route ) {
+			DeliveryRoute::LocalDelivery->value => __( 'Local delivery', 'cetech-woocommerce-delivery-engine' ),
+			DeliveryRoute::StorePickup->value => __( 'Store pickup', 'cetech-woocommerce-delivery-engine' ),
+			DeliveryRoute::Air->value => __( 'Air freight', 'cetech-woocommerce-delivery-engine' ),
+			DeliveryRoute::Sea->value => __( 'Sea freight', 'cetech-woocommerce-delivery-engine' ),
+			default => $route,
+		};
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_status_options(): array {
+		$options = [];
+
+		foreach ( RecordStatus::cases() as $status ) {
+			$options[ $status->value ] = AdminUiHelper::record_status_label( $status->value );
+		}
+
+		return $options;
 	}
 
 	/**
