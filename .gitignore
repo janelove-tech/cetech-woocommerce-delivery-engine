@@ -1,2 +1,14 @@
 /vendor/
 composer.lock
+
+# Packaging / build artifacts
+/dist/
+/build/
+*.zip
+
+# Local / secrets
+*.log
+.env
+.DS_Store
+Thumbs.db
+desktop.ini
