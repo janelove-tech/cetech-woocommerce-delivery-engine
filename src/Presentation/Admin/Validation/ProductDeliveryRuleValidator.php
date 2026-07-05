@@ -134,6 +134,34 @@ final class ProductDeliveryRuleValidator {
 	/**
 	 * @param array<string, mixed> $input
 	 *
+	 * @return array<string, string>
+	 */
+	public function validate_resolution_test_input( array $input ): array {
+		$errors = [];
+
+		$target_type = sanitize_key( (string) ( $input['test_target_type'] ?? '' ) );
+		$target_id   = isset( $input['test_target_id'] ) ? (int) $input['test_target_id'] : 0;
+
+		if ( ! $this->is_valid_target_type( $target_type ) ) {
+			$errors['test_target_type'] = __( 'Target type is required.', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( $target_id <= 0 ) {
+			$errors['test_target_id'] = __( 'Target ID is required.', 'cetech-woocommerce-delivery-engine' );
+		} elseif ( $this->is_valid_target_type( $target_type ) ) {
+			$target_error = $this->target_resolver->validate_target( $target_type, $target_id );
+
+			if ( null !== $target_error ) {
+				$errors['test_target_id'] = $target_error;
+			}
+		}
+
+		return $errors;
+	}
+
+	/**
+	 * @param array<string, mixed> $input
+	 *
 	 * @return list<int>
 	 */
 	public function normalize_offer_ids( mixed $input ): array {

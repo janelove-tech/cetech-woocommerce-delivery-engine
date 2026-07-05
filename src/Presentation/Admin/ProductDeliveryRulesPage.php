@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Presentation\Admin;
 
+use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
+use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
+use CetechDeliveryEngine\Application\ProductRule\ResolvedProductDeliveryRule;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\Enum\FulfilmentAvailability;
 use CetechDeliveryEngine\Domain\Enum\FulfilmentChoice;
@@ -29,6 +32,8 @@ final class ProductDeliveryRulesPage {
 
 	private const ACTION_DEACTIVATE = 'cetech_de_deactivate_product_delivery_rule';
 
+	private const ACTION_RESOLVE_TEST = 'cetech_de_test_product_rule_resolution';
+
 	public function __construct(
 		private ProductDeliveryRuleRepositoryInterface $repository,
 		private DeliveryOfferRepositoryInterface $delivery_offer_repository,
@@ -36,6 +41,7 @@ final class ProductDeliveryRulesPage {
 		private SupplierRepositoryInterface $supplier_repository,
 		private OriginRepositoryInterface $origin_repository,
 		private ProductDeliveryRuleValidator $validator,
+		private ProductDeliveryRuleResolver $rule_resolver,
 		private AdminActionHandler $action_handler,
 		private ConfigurationAuditLogger $audit_logger
 	) {
@@ -48,6 +54,10 @@ final class ProductDeliveryRulesPage {
 
 		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE, self::ACTION_DEACTIVATE, 'manage_product_delivery_rules', self::SLUG ) ) {
 			$this->handle_deactivate();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_RESOLVE_TEST, self::ACTION_RESOLVE_TEST, 'manage_product_delivery_rules', self::SLUG ) ) {
+			$this->handle_resolution_test();
 		}
 	}
 
@@ -115,7 +125,170 @@ final class ProductDeliveryRulesPage {
 			$rows
 		);
 
+		$this->render_resolution_test_tool( $lookups );
+
 		AdminPageRenderer::close_wrap();
+	}
+
+	private function render_resolution_test_tool( array $lookups ): void {
+		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_resolve' );
+
+		echo '<h2>' . esc_html__( 'Test product rule resolution', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="description">' . esc_html__(
+			'Read-only admin preview of which active product rules would apply. Does not change configuration, cart, checkout, or product metadata.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+
+		echo '<form method="post" action="">';
+		AdminFormHelper::nonce_field( self::ACTION_RESOLVE_TEST );
+		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_RESOLVE_TEST ) . '" />';
+		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminFormHelper::select_field(
+			'test_target_type',
+			__( 'Target type', 'cetech-woocommerce-delivery-engine' ),
+			$this->target_type_options(),
+			(string) ( $draft['test_target_type'] ?? ProductTargetType::Product->value )
+		);
+		AdminFormHelper::number_field(
+			'test_target_id',
+			__( 'Target ID', 'cetech-woocommerce-delivery-engine' ),
+			isset( $draft['test_target_id'] ) ? (int) $draft['test_target_id'] : null,
+			1,
+			__( 'WooCommerce product, variation, or product category term ID.', 'cetech-woocommerce-delivery-engine' )
+		);
+		echo '</tbody></table>';
+		submit_button( __( 'Run resolution test', 'cetech-woocommerce-delivery-engine' ), 'secondary', 'submit', false );
+		echo '</form>';
+
+		if ( is_array( $draft ) && isset( $draft['resolution_result'] ) && $draft['resolution_result'] instanceof ProductRuleResolutionResult ) {
+			$this->render_resolution_result( $draft['resolution_result'], $lookups );
+		}
+	}
+
+	/**
+	 * @param array{
+	 *     offers: array<int, array<string, mixed>>,
+	 *     profiles: array<int, array<string, mixed>>,
+	 *     suppliers: array<int, array<string, mixed>>,
+	 *     origins: array<int, array<string, mixed>>
+	 * } $lookups
+	 */
+	private function render_resolution_result( ProductRuleResolutionResult $result, array $lookups ): void {
+		echo '<h3>' . esc_html__( 'Resolution result', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
+
+		if ( ! $result->success ) {
+			echo '<p><strong>' . esc_html__( 'Error:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $result->error );
+			echo '</p>';
+			return;
+		}
+
+		echo '<p><strong>' . esc_html__( 'Input target:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+		echo esc_html( $result->input_target_type . ' #' . (string) $result->input_target_id );
+		if ( null !== $result->input_target_label && '' !== $result->input_target_label ) {
+			echo ' — ' . esc_html( $result->input_target_label );
+		}
+		echo '</p>';
+
+		if ( [] !== $result->candidate_hierarchy ) {
+			echo '<p><strong>' . esc_html__( 'Candidate hierarchy:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p>';
+			echo '<ol>';
+			foreach ( $result->candidate_hierarchy as $entry ) {
+				$label = isset( $entry['label'] ) && is_string( $entry['label'] ) && '' !== $entry['label']
+					? $entry['label']
+					: '—';
+				echo '<li>' . esc_html( (string) ( $entry['target_type'] ?? '' ) . ' #' . (string) ( $entry['target_id'] ?? 0 ) . ' (' . $label . ')' ) . '</li>';
+			}
+			echo '</ol>';
+		}
+
+		if ( null !== $result->no_match_message ) {
+			echo '<p><em>' . esc_html( $result->no_match_message ) . '</em></p>';
+		}
+
+		if ( [] !== $result->warnings ) {
+			echo '<p><strong>' . esc_html__( 'Warnings:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p><ul>';
+			foreach ( $result->warnings as $warning ) {
+				echo '<li>' . esc_html( $warning ) . '</li>';
+			}
+			echo '</ul>';
+		}
+
+		if ( [] !== $result->chosen_rules ) {
+			echo '<p><strong>' . esc_html__( 'Chosen rules per fulfilment availability:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p>';
+			echo '<table class="widefat striped" style="max-width:960px;"><thead><tr>';
+			echo '<th scope="col">' . esc_html__( 'Availability', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Rule', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Target', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Choice', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Supplier', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Origin', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Priority', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '</tr></thead><tbody>';
+
+			foreach ( $result->chosen_rules as $availability => $rule ) {
+				if ( ! $rule instanceof ResolvedProductDeliveryRule ) {
+					continue;
+				}
+
+				echo '<tr>';
+				echo '<td>' . esc_html( $availability ) . '</td>';
+				echo '<td>' . esc_html( '#' . (string) $rule->rule_id ) . '</td>';
+				echo '<td>' . esc_html( $rule->target_type . ' #' . (string) $rule->target_id ) . '</td>';
+				echo '<td>' . esc_html( $rule->fulfilment_choice ) . '</td>';
+				echo '<td>' . esc_html( $this->format_offer_id_list( $lookups['offers'], $rule->delivery_offer_ids ) ) . '</td>';
+				echo '<td>' . esc_html( $this->lookup_optional( $lookups['profiles'], $rule->logistics_profile_id ) ) . '</td>';
+				echo '<td>' . esc_html( $this->lookup_optional( $lookups['suppliers'], $rule->supplier_id ) ) . '</td>';
+				echo '<td>' . esc_html( $this->lookup_optional( $lookups['origins'], $rule->origin_id ) ) . '</td>';
+				echo '<td>' . esc_html( (string) $rule->priority ) . '</td>';
+				echo '</tr>';
+			}
+
+			echo '</tbody></table>';
+		}
+
+		if ( [] !== $result->skipped_rules ) {
+			echo '<p><strong>' . esc_html__( 'Skipped rules:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p><ul>';
+			foreach ( $result->skipped_rules as $skipped ) {
+				echo '<li>' . esc_html(
+					sprintf(
+						/* translators: 1: rule ID, 2: skip reason */
+						__( 'Rule #%1$d: %2$s', 'cetech-woocommerce-delivery-engine' ),
+						(int) ( $skipped['rule_id'] ?? 0 ),
+						(string) ( $skipped['reason'] ?? '' )
+					)
+				) . '</li>';
+			}
+			echo '</ul>';
+		}
+	}
+
+	private function handle_resolution_test(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$input = [
+			'test_target_type' => isset( $_POST['test_target_type'] ) ? sanitize_key( wp_unslash( (string) $_POST['test_target_type'] ) ) : '',
+			'test_target_id'   => isset( $_POST['test_target_id'] ) ? (int) $_POST['test_target_id'] : 0,
+		];
+
+		$errors = $this->validator->validate_resolution_test_input( $input );
+
+		if ( [] !== $errors ) {
+			$input['resolution_error'] = implode( ' ', array_values( $errors ) );
+			$this->action_handler->notices()->stash_form_draft( self::SLUG . '_resolve', $input );
+			$this->action_handler->notices()->flash_error( implode( ' ', array_values( $errors ) ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$result = $this->rule_resolver->resolve(
+			(string) $input['test_target_type'],
+			(int) $input['test_target_id']
+		);
+
+		$input['resolution_result'] = $result;
+		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_resolve', $input );
+		$this->action_handler->redirect( self::SLUG );
 	}
 
 	private function render_form( bool $is_edit ): void {
@@ -520,6 +693,28 @@ final class ProductDeliveryRulesPage {
 	private function format_offer_ids( array $offers, mixed $stored ): string {
 		$ids = $this->decode_offer_ids( $stored );
 
+		if ( [] === $ids ) {
+			return '—';
+		}
+
+		$labels = [];
+
+		foreach ( $ids as $id ) {
+			if ( isset( $offers[ $id ] ) ) {
+				$labels[] = (string) ( $offers[ $id ]['internal_code'] ?? (string) $id );
+			} else {
+				$labels[] = '#' . (string) $id;
+			}
+		}
+
+		return implode( ', ', $labels );
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $offers
+	 * @param list<int>                        $ids
+	 */
+	private function format_offer_id_list( array $offers, array $ids ): string {
 		if ( [] === $ids ) {
 			return '—';
 		}

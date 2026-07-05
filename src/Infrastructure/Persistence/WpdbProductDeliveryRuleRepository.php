@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Infrastructure\Persistence;
 
+use CetechDeliveryEngine\Domain\Enum\RecordStatus;
 use CetechDeliveryEngine\Domain\ProductRule\ProductDeliveryRuleRepositoryInterface;
 
 /**
@@ -70,6 +71,53 @@ final class WpdbProductDeliveryRuleRepository extends AbstractWpdbRepository imp
 
 		$sql    = "SELECT * FROM `{$table}` WHERE {$where} ORDER BY id ASC LIMIT %d";
 		$args[] = $limit;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...$args ), ARRAY_A );
+
+		return is_array( $rows ) ? $rows : [];
+	}
+
+	public function listActive( array $filters = [] ): array {
+		$filters['status'] = RecordStatus::Active->value;
+
+		return $this->list( $filters );
+	}
+
+	public function findActiveByTargets( array $targets ): array {
+		if ( [] === $targets ) {
+			return [];
+		}
+
+		global $wpdb;
+
+		$table   = $this->table_name();
+		$clauses = [];
+		$args    = [ RecordStatus::Active->value ];
+
+		foreach ( $targets as $target ) {
+			if ( ! is_array( $target ) ) {
+				continue;
+			}
+
+			$target_type = sanitize_key( (string) ( $target['target_type'] ?? '' ) );
+			$target_id   = (int) ( $target['target_id'] ?? 0 );
+
+			if ( '' === $target_type || $target_id <= 0 ) {
+				continue;
+			}
+
+			$clauses[] = '(target_type = %s AND target_id = %d)';
+			$args[]    = $target_type;
+			$args[]    = $target_id;
+		}
+
+		if ( [] === $clauses ) {
+			return [];
+		}
+
+		$where = 'status = %s AND (' . implode( ' OR ', $clauses ) . ')';
+		$sql   = "SELECT * FROM `{$table}` WHERE {$where} ORDER BY priority ASC, id ASC";
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...$args ), ARRAY_A );

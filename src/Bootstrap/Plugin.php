@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Bootstrap;
 
+use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
@@ -298,6 +299,14 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			ProductDeliveryRuleResolver::class,
+			static fn ( ServiceContainer $container ): ProductDeliveryRuleResolver => new ProductDeliveryRuleResolver(
+				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
+				$container->get( ProductTargetResolver::class )
+			)
+		);
+
+		$this->container->singleton(
 			ProductDeliveryRuleValidator::class,
 			static fn ( ServiceContainer $container ): ProductDeliveryRuleValidator => new ProductDeliveryRuleValidator(
 				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
@@ -405,6 +414,7 @@ final class Plugin {
 				$container->get( SupplierRepositoryInterface::class ),
 				$container->get( OriginRepositoryInterface::class ),
 				$container->get( ProductDeliveryRuleValidator::class ),
+				$container->get( ProductDeliveryRuleResolver::class ),
 				$container->get( AdminActionHandler::class ),
 				$container->get( ConfigurationAuditLogger::class )
 			)

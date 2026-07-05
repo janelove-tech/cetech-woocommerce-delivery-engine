@@ -735,6 +735,7 @@ final class ConfigurationHealthChecker {
 		$suppliers = $this->index_by_id( $this->supplier_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
 		$origins   = $this->index_by_id( $this->origin_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
 		$active_signatures = [];
+		$priority_competition = [];
 
 		foreach ( $this->product_rule_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $rule ) {
 			$rule_id = (int) ( $rule['id'] ?? 0 );
@@ -801,6 +802,38 @@ final class ConfigurationHealthChecker {
 			}
 
 			$this->check_product_rule_offers( $diagnostics, $rule, $offers );
+
+			if ( FulfilmentChoice::Delivery->value === $choice ) {
+				$stored_offers = $rule['delivery_offer_ids'] ?? null;
+				$offer_ids     = $this->decode_product_rule_offer_ids( $stored_offers );
+
+				if ( [] === $offer_ids ) {
+					if ( $this->is_offer_ids_json_invalid( $stored_offers ) ) {
+						$this->add(
+							$diagnostics,
+							DiagnosticSeverity::Warning,
+							'product_rule_invalid_offer_ids_json',
+							__( 'Product rule invalid offer IDs JSON', 'cetech-woocommerce-delivery-engine' ),
+							__( 'An active delivery rule has delivery_offer_ids data that is not valid JSON.', 'cetech-woocommerce-delivery-engine' ),
+							'product_delivery_rule',
+							$rule_id,
+							sprintf( 'fulfilment_choice=%s', $choice )
+						);
+					} else {
+						$this->add(
+							$diagnostics,
+							DiagnosticSeverity::Warning,
+							'product_rule_delivery_without_offers',
+							__( 'Product rule delivery without offers', 'cetech-woocommerce-delivery-engine' ),
+							__( 'An active product rule uses delivery fulfilment choice but has no delivery offers.', 'cetech-woocommerce-delivery-engine' ),
+							'product_delivery_rule',
+							$rule_id,
+							sprintf( 'fulfilment_choice=%s', $choice )
+						);
+					}
+				}
+			}
+
 			$this->check_product_rule_optional_fk(
 				$diagnostics,
 				$rule,
@@ -852,6 +885,33 @@ final class ConfigurationHealthChecker {
 			$signature = sprintf( '%s|%d|%s', $target_type, $target_id, $availability );
 			$active_signatures[ $signature ]   = $active_signatures[ $signature ] ?? [];
 			$active_signatures[ $signature ][] = $rule_id;
+
+			$priority_signature = sprintf(
+				'%s|%d|%s|%d',
+				$target_type,
+				$target_id,
+				$availability,
+				(int) ( $rule['priority'] ?? 100 )
+			);
+			$priority_competition[ $priority_signature ]   = $priority_competition[ $priority_signature ] ?? [];
+			$priority_competition[ $priority_signature ][] = $rule_id;
+		}
+
+		foreach ( $priority_competition as $signature => $rule_ids ) {
+			if ( count( $rule_ids ) < 2 ) {
+				continue;
+			}
+
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'product_rule_competing_same_priority',
+				__( 'Competing product rules at same priority', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Multiple active product rules share the same target, fulfilment availability, and priority.', 'cetech-woocommerce-delivery-engine' ),
+				'product_delivery_rule',
+				(int) $rule_ids[0],
+				sprintf( 'signature=%s ids=%s', $signature, implode( ',', array_map( 'strval', $rule_ids ) ) )
+			);
 		}
 
 		foreach ( $active_signatures as $signature => $rule_ids ) {
@@ -1015,6 +1075,14 @@ final class ConfigurationHealthChecker {
 		}
 
 		return array_values( array_unique( $ids ) );
+	}
+
+	private function is_offer_ids_json_invalid( mixed $stored ): bool {
+		if ( null === $stored || '' === trim( (string) $stored ) ) {
+			return false;
+		}
+
+		return [] === $this->decode_product_rule_offer_ids( $stored );
 	}
 
 	private function is_valid_fulfilment_availability( string $availability ): bool {

@@ -29,6 +29,20 @@ interface ProductDeliveryRuleRepositoryInterface {
 	public function list( array $filters = [] ): array;
 
 	/**
+	 * @param array<string, mixed> $filters
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function listActive( array $filters = [] ): array;
+
+	/**
+	 * @param list<array{target_type: string, target_id: int}> $targets
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function findActiveByTargets( array $targets ): array;
+
+	/**
 	 * @param array<string, mixed> $data
 	 */
 	public function save( array $data ): int;
