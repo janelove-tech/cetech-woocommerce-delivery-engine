@@ -36,9 +36,68 @@ final class WpdbDestinationRuleRepository extends AbstractWpdbRepository impleme
 		return false !== $result;
 	}
 
-	public function replaceForZone( int $zone_id, array $rules ): void {
-		throw new \BadMethodCallException(
-			'DestinationRuleRepository::replaceForZone() is not implemented until Phase 2B CRUD.'
+	public function replaceForZone( int $zone_id, array $rules ): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->query( 'START TRANSACTION' );
+
+		if ( ! $this->deleteByZoneId( $zone_id ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query( 'ROLLBACK' );
+
+			return false;
+		}
+
+		$now = gmdate( 'Y-m-d H:i:s' );
+
+		foreach ( $rules as $rule ) {
+			if ( ! $this->insert_rule_row( $zone_id, $rule, $now ) ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+				$wpdb->query( 'ROLLBACK' );
+
+				return false;
+			}
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->query( 'COMMIT' );
+
+		return true;
+	}
+
+	public function count_all(): int {
+		return parent::count_all();
+	}
+
+	/**
+	 * @param array<string, mixed> $rule
+	 */
+	private function insert_rule_row( int $zone_id, array $rule, string $now ): bool {
+		global $wpdb;
+
+		$table = $this->table_name();
+		$row   = [
+			'zone_id'    => $zone_id,
+			'rule_type'  => (string) ( $rule['rule_type'] ?? '' ),
+			'rule_value' => (string) ( $rule['rule_value'] ?? '' ),
+			'match_mode' => (string) ( $rule['match_mode'] ?? 'exact' ),
+			'priority'   => (int) ( $rule['priority'] ?? 100 ),
+			'created_at' => $now,
+			'updated_at' => $now,
+		];
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		$inserted = $wpdb->insert(
+			$table,
+			$row,
+			[ '%d', '%s', '%s', '%s', '%d', '%s', '%s' ]
 		);
+
+		if ( false === $inserted ) {
+			return false;
+		}
+
+		return (int) $wpdb->insert_id > 0;
 	}
 }

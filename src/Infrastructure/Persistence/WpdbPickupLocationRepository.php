@@ -21,14 +21,67 @@ final class WpdbPickupLocationRepository extends AbstractWpdbRepository implemen
 	}
 
 	public function save( array $data ): int {
-		$this->throw_save_not_implemented();
+		$now = gmdate( 'Y-m-d H:i:s' );
+		$id  = isset( $data['id'] ) ? (int) $data['id'] : 0;
+
+		$row = [
+			'internal_code'              => (string) ( $data['internal_code'] ?? '' ),
+			'location_name'              => (string) ( $data['location_name'] ?? '' ),
+			'public_address'             => $this->nullable_string( $data['public_address'] ?? null ),
+			'public_opening_hours'       => $this->nullable_string( $data['public_opening_hours'] ?? null ),
+			'public_pickup_instructions' => $this->nullable_string( $data['public_pickup_instructions'] ?? null ),
+			'contact_phone'              => $this->nullable_string( $data['contact_phone'] ?? null, 64 ),
+			'contact_email'              => $this->nullable_string( $data['contact_email'] ?? null, 255 ),
+			'readiness_estimate'         => $this->nullable_string( $data['readiness_estimate'] ?? null, 255 ),
+			'status'                     => (string) ( $data['status'] ?? 'active' ),
+			'updated_at'                 => $now,
+		];
+
+		$formats = [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ];
+
+		if ( $id > 0 ) {
+			if ( ! $this->update_row( $id, $row, $formats ) ) {
+				return 0;
+			}
+
+			return $id;
+		}
+
+		$row['created_at'] = $now;
+		$insert_formats    = array_merge( $formats, [ '%s' ] );
+
+		$insert_id = $this->insert_row( $row, $insert_formats );
+
+		return $insert_id > 0 ? $insert_id : 0;
 	}
 
 	public function list( array $criteria = [] ): array {
-		return $this->fetch_list( $criteria );
+		return $this->fetch_list( $criteria, (int) ( $criteria['limit'] ?? 500 ) );
 	}
 
 	public function softDelete( int $id ): bool {
 		return $this->mark_inactive( $id );
+	}
+
+	public function count_all(): int {
+		return parent::count_all();
+	}
+
+	private function nullable_string( mixed $value, ?int $max_length = null ): ?string {
+		if ( null === $value ) {
+			return null;
+		}
+
+		$string = trim( (string) $value );
+
+		if ( '' === $string ) {
+			return null;
+		}
+
+		if ( null !== $max_length && strlen( $string ) > $max_length ) {
+			return substr( $string, 0, $max_length );
+		}
+
+		return $string;
 	}
 }

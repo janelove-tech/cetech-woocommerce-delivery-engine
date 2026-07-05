@@ -13,6 +13,9 @@ use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
 use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
+use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
 
 /**
@@ -30,7 +33,10 @@ final class SystemStatusPage {
 		private IntegrationRegistry $integration_registry,
 		private Capabilities $capabilities,
 		private LogisticsProfileRepositoryInterface $logistics_profile_repository,
-		private DeliveryOfferRepositoryInterface $delivery_offer_repository
+		private DeliveryOfferRepositoryInterface $delivery_offer_repository,
+		private DestinationZoneRepositoryInterface $destination_zone_repository,
+		private DestinationRuleRepositoryInterface $destination_rule_repository,
+		private PickupLocationRepositoryInterface $pickup_location_repository
 	) {
 	}
 
@@ -105,6 +111,9 @@ final class SystemStatusPage {
 			[
 				__( 'Logistics profiles', 'cetech-woocommerce-delivery-engine' ) => (string) $this->logistics_profile_repository->count_all(),
 				__( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ) => (string) $this->delivery_offer_repository->count_all(),
+				__( 'Destination zones', 'cetech-woocommerce-delivery-engine' ) => (string) $this->destination_zone_repository->count_all(),
+				__( 'Destination rules', 'cetech-woocommerce-delivery-engine' ) => (string) $this->destination_rule_repository->count_all(),
+				__( 'Pickup locations', 'cetech-woocommerce-delivery-engine' ) => (string) $this->pickup_location_repository->count_all(),
 			]
 		);
 
@@ -199,8 +208,10 @@ final class SystemStatusPage {
 	private function render_configuration_warnings(): void {
 		$profile_count = $this->logistics_profile_repository->count_all();
 		$offer_count   = $this->delivery_offer_repository->count_all();
+		$zone_count    = $this->destination_zone_repository->count_all();
+		$pickup_count  = $this->pickup_location_repository->count_all();
 
-		if ( $profile_count > 0 && $offer_count > 0 ) {
+		if ( $profile_count > 0 && $offer_count > 0 && $zone_count > 0 && $pickup_count > 0 ) {
 			return;
 		}
 
@@ -211,7 +222,15 @@ final class SystemStatusPage {
 		}
 
 		if ( 0 === $offer_count ) {
-			echo esc_html__( 'Warning: no delivery offers are configured yet.', 'cetech-woocommerce-delivery-engine' );
+			echo esc_html__( 'Warning: no delivery offers are configured yet.', 'cetech-woocommerce-delivery-engine' ) . ' ';
+		}
+
+		if ( 0 === $zone_count ) {
+			echo esc_html__( 'Warning: no destination zones are configured yet.', 'cetech-woocommerce-delivery-engine' ) . ' ';
+		}
+
+		if ( 0 === $pickup_count ) {
+			echo esc_html__( 'Warning: no pickup locations are configured yet.', 'cetech-woocommerce-delivery-engine' );
 		}
 
 		echo '</p></div>';

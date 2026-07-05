@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Presentation\Admin;
 
 /**
- * Registers Delivery Engine admin menus for Phase 2B1.
+ * Registers Delivery Engine admin menus for Phase 2B2.
  */
 final class AdminMenu {
 
@@ -16,7 +16,9 @@ final class AdminMenu {
 	public function __construct(
 		private SystemStatusPage $system_status_page,
 		private LogisticsProfilesPage $logistics_profiles_page,
-		private DeliveryOffersPage $delivery_offers_page
+		private DeliveryOffersPage $delivery_offers_page,
+		private DestinationZonesPage $destination_zones_page,
+		private PickupLocationsPage $pickup_locations_page
 	) {
 	}
 
@@ -25,6 +27,8 @@ final class AdminMenu {
 		add_action( 'admin_init', [ $this->system_status_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->logistics_profiles_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->delivery_offers_page, 'handle_actions' ] );
+		add_action( 'admin_init', [ $this->destination_zones_page, 'handle_actions' ] );
+		add_action( 'admin_init', [ $this->pickup_locations_page, 'handle_actions' ] );
 	}
 
 	public function add_menus(): void {
@@ -75,12 +79,33 @@ final class AdminMenu {
 			);
 		}
 
+		if ( current_user_can( 'manage_delivery_zones' ) ) {
+			add_submenu_page(
+				self::PARENT_SLUG,
+				__( 'Destination Zones', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Destination Zones', 'cetech-woocommerce-delivery-engine' ),
+				'manage_delivery_zones',
+				DestinationZonesPage::SLUG,
+				[ $this->destination_zones_page, 'render' ]
+			);
+
+			add_submenu_page(
+				self::PARENT_SLUG,
+				__( 'Pickup Locations', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Pickup Locations', 'cetech-woocommerce-delivery-engine' ),
+				'manage_delivery_zones',
+				PickupLocationsPage::SLUG,
+				[ $this->pickup_locations_page, 'render' ]
+			);
+		}
+
 		remove_submenu_page( self::PARENT_SLUG, self::PARENT_SLUG );
 	}
 
 	private function current_user_has_any_menu_cap(): bool {
 		return current_user_can( 'manage_delivery_settings' )
 			|| current_user_can( 'manage_logistics_profiles' )
-			|| current_user_can( 'manage_delivery_offers' );
+			|| current_user_can( 'manage_delivery_offers' )
+			|| current_user_can( 'manage_delivery_zones' );
 	}
 }

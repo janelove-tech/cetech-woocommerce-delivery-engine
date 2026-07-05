@@ -16,5 +16,7 @@ interface DestinationRuleRepositoryInterface {
 	/**
 	 * @param list<array<string, mixed>> $rules
 	 */
-	public function replaceForZone( int $zone_id, array $rules ): void;
+	public function replaceForZone( int $zone_id, array $rules ): bool;
+
+	public function count_all(): int;
 }

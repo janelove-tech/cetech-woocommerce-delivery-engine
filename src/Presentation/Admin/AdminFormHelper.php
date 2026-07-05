@@ -153,4 +153,35 @@ final class AdminFormHelper {
 	public static function is_valid_code( string $code ): bool {
 		return (bool) preg_match( '/^[a-z0-9_-]+$/', $code );
 	}
+
+	public static function checkbox_field(
+		string $name,
+		string $label,
+		bool $checked = false,
+		string $description = ''
+	): void {
+		echo '<tr><th scope="row">' . esc_html( $label ) . '</th><td>';
+		printf(
+			'<label><input type="checkbox" id="%1$s" name="%1$s" value="1" %2$s /> %3$s</label>',
+			esc_attr( $name ),
+			checked( $checked, true, false ),
+			esc_html__( 'Yes', 'cetech-woocommerce-delivery-engine' )
+		);
+		if ( '' !== $description ) {
+			echo '<p class="description">' . esc_html( $description ) . '</p>';
+		}
+		echo '</td></tr>';
+	}
+
+	public static function verify_get_nonce( string $action ): bool {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! isset( $_GET['cetech_de_nonce'] ) ) {
+			return false;
+		}
+
+		return (bool) wp_verify_nonce(
+			sanitize_text_field( wp_unslash( (string) $_GET['cetech_de_nonce'] ) ),
+			$action
+		);
+	}
 }

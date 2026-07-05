@@ -35,10 +35,16 @@ use CetechDeliveryEngine\Presentation\Admin\AdminMenu;
 use CetechDeliveryEngine\Presentation\Admin\AdminNoticeService;
 use CetechDeliveryEngine\Presentation\Admin\ConfigurationAuditLogger;
 use CetechDeliveryEngine\Presentation\Admin\DeliveryOffersPage;
+use CetechDeliveryEngine\Presentation\Admin\DestinationZoneTestMatcher;
+use CetechDeliveryEngine\Presentation\Admin\DestinationZonesPage;
 use CetechDeliveryEngine\Presentation\Admin\LogisticsProfilesPage;
+use CetechDeliveryEngine\Presentation\Admin\PickupLocationsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationRuleValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationZoneValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\LogisticsProfileValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\PickupLocationValidator;
 use CetechDeliveryEngine\Support\AdminNotice;
 use CetechDeliveryEngine\Support\Logger;
 
@@ -220,6 +226,29 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			DestinationZoneValidator::class,
+			static fn (): DestinationZoneValidator => new DestinationZoneValidator()
+		);
+
+		$this->container->singleton(
+			DestinationRuleValidator::class,
+			static fn (): DestinationRuleValidator => new DestinationRuleValidator()
+		);
+
+		$this->container->singleton(
+			PickupLocationValidator::class,
+			static fn (): PickupLocationValidator => new PickupLocationValidator()
+		);
+
+		$this->container->singleton(
+			DestinationZoneTestMatcher::class,
+			static fn ( ServiceContainer $container ): DestinationZoneTestMatcher => new DestinationZoneTestMatcher(
+				$container->get( DestinationZoneRepositoryInterface::class ),
+				$container->get( DestinationRuleRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
 			LogisticsProfilesPage::class,
 			static fn ( ServiceContainer $container ): LogisticsProfilesPage => new LogisticsProfilesPage(
 				$container->get( LogisticsProfileRepositoryInterface::class ),
@@ -240,6 +269,29 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			DestinationZonesPage::class,
+			static fn ( ServiceContainer $container ): DestinationZonesPage => new DestinationZonesPage(
+				$container->get( DestinationZoneRepositoryInterface::class ),
+				$container->get( DestinationRuleRepositoryInterface::class ),
+				$container->get( DestinationZoneValidator::class ),
+				$container->get( DestinationRuleValidator::class ),
+				$container->get( DestinationZoneTestMatcher::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
+			PickupLocationsPage::class,
+			static fn ( ServiceContainer $container ): PickupLocationsPage => new PickupLocationsPage(
+				$container->get( PickupLocationRepositoryInterface::class ),
+				$container->get( PickupLocationValidator::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
 			SystemStatusPage::class,
 			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
 				$container->get( Requirements::class ),
@@ -247,7 +299,10 @@ final class Plugin {
 				$container->get( IntegrationRegistry::class ),
 				$container->get( Capabilities::class ),
 				$container->get( LogisticsProfileRepositoryInterface::class ),
-				$container->get( DeliveryOfferRepositoryInterface::class )
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( DestinationZoneRepositoryInterface::class ),
+				$container->get( DestinationRuleRepositoryInterface::class ),
+				$container->get( PickupLocationRepositoryInterface::class )
 			)
 		);
 
@@ -256,7 +311,9 @@ final class Plugin {
 			static fn ( ServiceContainer $container ): AdminMenu => new AdminMenu(
 				$container->get( SystemStatusPage::class ),
 				$container->get( LogisticsProfilesPage::class ),
-				$container->get( DeliveryOffersPage::class )
+				$container->get( DeliveryOffersPage::class ),
+				$container->get( DestinationZonesPage::class ),
+				$container->get( PickupLocationsPage::class )
 			)
 		);
 	}
