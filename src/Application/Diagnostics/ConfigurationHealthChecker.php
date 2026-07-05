@@ -13,6 +13,7 @@ use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
 use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
+use CetechDeliveryEngine\Presentation\Email\CustomerOrderDeliveryEmailSummaryRenderer;
 use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
 use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
@@ -90,6 +91,7 @@ final class ConfigurationHealthChecker {
 		$this->check_woocommerce_shipping_rate_calculation( $diagnostics );
 		$this->check_order_delivery_snapshot_persistence( $diagnostics );
 		$this->check_customer_order_delivery_summary( $diagnostics );
+		$this->check_customer_email_delivery_summary( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1769,6 +1771,81 @@ final class ConfigurationHealthChecker {
 				'customer_summary_enabled_renderer_missing',
 				__( 'Customer summary: renderer missing', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Customer order delivery summary is enabled but CustomerOrderDeliverySummaryRenderer is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_customer_email_delivery_summary( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( CustomerOrderDeliveryEmailSummaryRenderer::EMAIL_SUMMARY_FLAG ) ) {
+			return;
+		}
+
+		if ( ! $this->feature_flags->is_enabled( CustomerOrderDeliverySummaryBuilder::SUMMARY_FLAG ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'email_summary_enabled_customer_summary_disabled',
+				__( 'Email summary enabled without customer order summary', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary is enabled but enable_customer_order_delivery_summary is disabled. Email output uses the same builder; enable the customer summary flag for consistent configuration.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( OrderDeliverySnapshotGate::SNAPSHOT_FLAG ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'email_summary_enabled_snapshot_persistence_disabled',
+				__( 'Email summary enabled without snapshot persistence', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary is enabled but enable_order_delivery_snapshot_persistence is disabled. Existing orders may have no snapshots to display.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( CustomerOrderDeliverySummaryBuilder::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'email_summary_enabled_builder_missing',
+				__( 'Email summary: customer summary builder missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary is enabled but CustomerOrderDeliverySummaryBuilder is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotReader::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'email_summary_enabled_reader_missing',
+				__( 'Email summary: snapshot reader missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary is enabled but OrderDeliverySnapshotReader is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( OrderDeliverySnapshotIntegrity::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'email_summary_enabled_integrity_checker_missing',
+				__( 'Email summary: integrity checker missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary is enabled but OrderDeliverySnapshotIntegrity is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( CustomerOrderDeliveryEmailSummaryRenderer::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'email_summary_enabled_renderer_missing',
+				__( 'Email summary: email renderer missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary is enabled but CustomerOrderDeliveryEmailSummaryRenderer is not available.', 'cetech-woocommerce-delivery-engine' ),
 				'feature_flag'
 			);
 		}

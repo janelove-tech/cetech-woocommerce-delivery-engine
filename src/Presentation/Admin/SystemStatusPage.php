@@ -14,6 +14,7 @@ use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotIntegrity;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotPersister;
 use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshotReader;
 use CetechDeliveryEngine\Presentation\Admin\OrderDeliverySnapshotAdminDisplay;
+use CetechDeliveryEngine\Presentation\Email\CustomerOrderDeliveryEmailSummaryRenderer;
 use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
 use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
 use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
@@ -164,6 +165,7 @@ final class SystemStatusPage {
 		$snapshot_flag_enabled   = $this->feature_flags->is_enabled( OrderDeliverySnapshotGate::SNAPSHOT_FLAG );
 		$snapshot_runtime_active = $snapshot_flag_enabled && $shipping_runtime_active;
 		$customer_summary_enabled = $this->feature_flags->is_enabled( CustomerOrderDeliverySummaryBuilder::SUMMARY_FLAG );
+		$email_summary_enabled    = $this->feature_flags->is_enabled( CustomerOrderDeliveryEmailSummaryRenderer::EMAIL_SUMMARY_FLAG );
 
 		$this->render_table(
 			__( 'Runtime readiness (admin/test only)', 'cetech-woocommerce-delivery-engine' ),
@@ -220,7 +222,16 @@ final class SystemStatusPage {
 				__( 'Customer summary mode', 'cetech-woocommerce-delivery-engine' ) => $customer_summary_enabled
 					? __( 'Read-only snapshot display', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Disabled', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Email delivery summary', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Customer email delivery summary flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $email_summary_enabled ),
+				__( 'Customer email delivery summary renderer', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $email_summary_enabled && class_exists( CustomerOrderDeliveryEmailSummaryRenderer::class ) && function_exists( 'WC' ) ),
+				__( 'Email summary mode', 'cetech-woocommerce-delivery-engine' ) => $email_summary_enabled
+					? __( 'Read-only snapshot display', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Disabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Shipment tracking in emails', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Carrier email updates', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Email delivery summary', 'cetech-woocommerce-delivery-engine' ) => $email_summary_enabled
+					? __( 'Enabled (customer emails only)', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipment tracking timeline', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Public shipment page', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Shipment creation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),

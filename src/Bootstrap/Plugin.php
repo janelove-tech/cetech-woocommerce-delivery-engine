@@ -67,6 +67,7 @@ use CetechDeliveryEngine\Presentation\Admin\ProductTargetResolver;
 use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
 use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
+use CetechDeliveryEngine\Presentation\Email\CustomerOrderDeliveryEmailSummaryRenderer;
 use CetechDeliveryEngine\Presentation\Frontend\CustomerOrderDeliverySummaryRenderer;
 use CetechDeliveryEngine\Presentation\Frontend\ProductDeliverySelectorRenderer;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
@@ -169,6 +170,7 @@ final class Plugin {
 		$this->container->get( SelectedOfferShippingIntegration::class )->register();
 		$this->container->get( OrderDeliverySnapshotPersister::class )->register();
 		$this->container->get( CustomerOrderDeliverySummaryRenderer::class )->register();
+		$this->container->get( CustomerOrderDeliveryEmailSummaryRenderer::class )->register();
 
 		if ( is_admin() ) {
 			$this->container->get( OrderDeliverySnapshotAdminDisplay::class )->register();
@@ -521,6 +523,15 @@ final class Plugin {
 		$this->container->singleton(
 			CustomerOrderDeliverySummaryRenderer::class,
 			static fn ( ServiceContainer $container ): CustomerOrderDeliverySummaryRenderer => new CustomerOrderDeliverySummaryRenderer(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class ),
+				$container->get( CustomerOrderDeliverySummaryBuilder::class )
+			)
+		);
+
+		$this->container->singleton(
+			CustomerOrderDeliveryEmailSummaryRenderer::class,
+			static fn ( ServiceContainer $container ): CustomerOrderDeliveryEmailSummaryRenderer => new CustomerOrderDeliveryEmailSummaryRenderer(
 				$container->get( FeatureFlags::class ),
 				$container->get( Requirements::class ),
 				$container->get( CustomerOrderDeliverySummaryBuilder::class )
