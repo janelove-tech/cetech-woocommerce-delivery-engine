@@ -575,6 +575,8 @@ Version 1 uses simple staff/carrier-managed shipment statuses and optional manua
 
 The customer can view shipment progress but is not required to confirm receipt.
 
+**V1 release-candidate operations:** see [V1-RC-FLAG-MATRIX.md](V1-RC-FLAG-MATRIX.md) and [V1-RC-SMOKE-TEST-CHECKLIST.md](V1-RC-SMOKE-TEST-CHECKLIST.md) for feature-flag enablement order and staging smoke tests. Shipment records, tracking timelines, and carrier integrations are **not enabled** in V1 RC.
+
 ---
 
 ## 13. Site and implementation reality

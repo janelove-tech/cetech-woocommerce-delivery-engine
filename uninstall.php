@@ -70,6 +70,12 @@ $option_prefix = 'cetech_de_';
 
 $feature_flag_options = [
 	'enable_product_delivery_selector',
+	'enable_cart_delivery_selection_capture',
+	'enable_checkout_delivery_selection_validation',
+	'enable_woocommerce_shipping_rate_calculation',
+	'enable_order_delivery_snapshot_persistence',
+	'enable_customer_order_delivery_summary',
+	'enable_customer_email_delivery_summary',
 	'enable_shipment_records',
 	'enable_customer_timeline',
 	'enable_tracking_links',
