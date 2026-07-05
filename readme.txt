@@ -3,7 +3,7 @@ Contributors: cetech
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 1.0.0-rc.1
 License: Proprietary
 WC requires at least: 8.0
 WC tested up to: 10.9
@@ -48,6 +48,12 @@ No. WooCommerce is the only required dependency.
 No. Phase 1A is a safe core skeleton only.
 
 == Changelog ==
+
+= 1.0.0-rc.1 =
+* Release-candidate build for CETECH WooCommerce Delivery Engine V1.
+* Adds delivery configuration, delivery offers, destination zones/rules, rate cards, and product delivery rules.
+* Adds feature-flagged product delivery selector, cart selection capture, checkout validation, selected-offer shipping method, protected order snapshots, admin order snapshot display, customer order summary, and customer email summary.
+* Shipment records, tracking timelines, carrier APIs, driver workflows, OTP/QR/GPS/POD, WooCommerce Blocks checkout support, and automatic order completion are not included in this RC.
 
 = 0.1.0 =
 * Phase 1A core foundation skeleton

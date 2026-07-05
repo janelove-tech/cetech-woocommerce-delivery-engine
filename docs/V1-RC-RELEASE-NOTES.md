@@ -2,7 +2,7 @@
 
 **Status:** Release Candidate (private staging)  
 **Package identity:** `cetech-woocommerce-delivery-engine-v1.0.0-rc.1.zip`  
-**Plugin header version (current):** `0.1.0` — align headers in a follow-up commit if desired before public RC tag
+**Plugin header version:** `1.0.0-rc.1`
 
 ---
 
@@ -74,8 +74,6 @@ See [V1-RC-FLAG-MATRIX.md](V1-RC-FLAG-MATRIX.md) for dependencies.
 
 ## Known limitations
 
-- Plugin header / constant version still `0.1.0` until release alignment commit
-- `readme.txt` changelog still references early Phase 1A skeleton in places — operational docs in `docs/` are authoritative for V1 RC
 - Variable product delivery capture deferred
 - Mixed-cart line quotes may differ from WooCommerce shipping line total
 - `vendor/` must be present in deployment ZIP (Composer autoload required)
