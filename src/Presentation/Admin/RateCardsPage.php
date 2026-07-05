@@ -1,0 +1,865 @@
+<?php
+
+declare(strict_types=1);
+
+namespace CetechDeliveryEngine\Presentation\Admin;
+
+use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
+use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
+use CetechDeliveryEngine\Domain\Enum\RateCardChargeType;
+use CetechDeliveryEngine\Domain\Enum\RecordStatus;
+use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
+use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
+use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
+use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
+use CetechDeliveryEngine\Presentation\Admin\Validation\RateCardValidator;
+
+/**
+ * Admin-only rate card configuration. Not exposed to storefront or checkout.
+ */
+final class RateCardsPage {
+
+	public const SLUG = 'cetech-delivery-engine-rate-cards';
+
+	private const ACTION_SAVE = 'cetech_de_save_rate_card';
+
+	private const ACTION_DEACTIVATE = 'cetech_de_deactivate_rate_card';
+
+	private const ACTION_TEST = 'cetech_de_test_rate_card';
+
+	public function __construct(
+		private RateCardRepositoryInterface $repository,
+		private DeliveryOfferRepositoryInterface $delivery_offer_repository,
+		private DestinationZoneRepositoryInterface $destination_zone_repository,
+		private LogisticsProfileRepositoryInterface $logistics_profile_repository,
+		private SupplierRepositoryInterface $supplier_repository,
+		private OriginRepositoryInterface $origin_repository,
+		private RateCardValidator $validator,
+		private AdminRateCardTester $tester,
+		private AdminActionHandler $action_handler,
+		private ConfigurationAuditLogger $audit_logger
+	) {
+	}
+
+	public function handle_actions(): void {
+		if ( $this->action_handler->verify_post( self::ACTION_SAVE, self::ACTION_SAVE, 'manage_delivery_rate_cards', self::SLUG ) ) {
+			$this->handle_save();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE, self::ACTION_DEACTIVATE, 'manage_delivery_rate_cards', self::SLUG ) ) {
+			$this->handle_deactivate();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_TEST, self::ACTION_TEST, 'manage_delivery_rate_cards', self::SLUG ) ) {
+			$this->handle_test();
+		}
+	}
+
+	public function render(): void {
+		if ( ! current_user_can( 'manage_delivery_rate_cards' ) ) {
+			wp_die( esc_html__( 'You do not have permission to access this page.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : 'list';
+
+		if ( 'add' === $action || 'edit' === $action ) {
+			$this->render_form( 'edit' === $action );
+			return;
+		}
+
+		$this->render_list();
+	}
+
+	private function render_list(): void {
+		AdminPageRenderer::open_wrap( __( 'Rate Cards', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageRenderer::add_new_button( self::SLUG, __( 'Add New', 'cetech-woocommerce-delivery-engine' ) );
+
+		$lookups = $this->build_lookups();
+		$records = $this->repository->list( [ 'limit' => 500 ] );
+		$rows    = [];
+
+		foreach ( $records as $record ) {
+			$id = (int) ( $record['id'] ?? 0 );
+			$rows[] = [
+				(string) $id,
+				esc_html( (string) ( $record['internal_code'] ?? '' ) ),
+				'—',
+				esc_html( $this->lookup_offer_label( $lookups['offers'], (int) ( $record['delivery_offer_id'] ?? 0 ) ) ),
+				esc_html( $this->lookup_zone_label( $lookups['zones'], (int) ( $record['destination_zone_id'] ?? 0 ) ) ),
+				esc_html( $this->lookup_optional( $lookups['profiles'], $record['logistics_profile_id'] ?? null ) ),
+				esc_html( $this->lookup_optional( $lookups['suppliers'], $record['supplier_id'] ?? null ) ),
+				esc_html( $this->lookup_optional( $lookups['origins'], $record['origin_id'] ?? null ) ),
+				esc_html( (string) ( $record['charge_type'] ?? '' ) ),
+				esc_html( (string) ( $record['base_amount'] ?? '' ) ),
+				esc_html( (string) ( $record['base_currency'] ?? '' ) ),
+				esc_html( (string) ( $record['priority'] ?? '' ) ),
+				esc_html( (string) ( $record['status'] ?? '' ) ),
+				esc_html( (string) ( $record['updated_at'] ?? '' ) ),
+				$this->render_actions( $id ),
+			];
+		}
+
+		AdminPageRenderer::render_table(
+			[
+				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Code', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Internal name', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Delivery offer', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Destination zone', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Charge type', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Base amount', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Currency', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Priority', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
+			],
+			$rows
+		);
+
+		$this->render_test_tool();
+		AdminPageRenderer::close_wrap();
+	}
+
+	private function render_test_tool(): void {
+		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_test' );
+
+		echo '<h2>' . esc_html__( 'Test rate card', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="description">' . esc_html__(
+			'Read-only admin preview against stored rate cards. Does not change data, touch cart/checkout, or emit customer-facing prices.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+
+		echo '<form method="post" action="">';
+		AdminFormHelper::nonce_field( self::ACTION_TEST );
+		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_TEST ) . '" />';
+		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminFormHelper::select_field(
+			'test_delivery_offer_id',
+			__( 'Delivery offer', 'cetech-woocommerce-delivery-engine' ),
+			$this->required_select_options( $this->delivery_offer_options() ),
+			(string) ( $draft['test_delivery_offer_id'] ?? '' )
+		);
+		AdminFormHelper::select_field(
+			'test_destination_zone_id',
+			__( 'Destination zone', 'cetech-woocommerce-delivery-engine' ),
+			$this->required_select_options( $this->destination_zone_options() ),
+			(string) ( $draft['test_destination_zone_id'] ?? '' )
+		);
+		AdminFormHelper::select_field(
+			'test_logistics_profile_id',
+			__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->logistics_profile_options() ),
+			(string) ( $draft['test_logistics_profile_id'] ?? '' ),
+			__( 'Optional. Leave blank for wildcard.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'test_supplier_id',
+			__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->supplier_options() ),
+			(string) ( $draft['test_supplier_id'] ?? '' ),
+			__( 'Optional. Leave blank for wildcard.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'test_origin_id',
+			__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->origin_options() ),
+			(string) ( $draft['test_origin_id'] ?? '' ),
+			__( 'Optional. Leave blank for wildcard.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field(
+			'test_quantity',
+			__( 'Quantity', 'cetech-woocommerce-delivery-engine' ),
+			isset( $draft['test_quantity'] ) ? (int) $draft['test_quantity'] : 1,
+			1
+		);
+		AdminFormHelper::text_field(
+			'test_currency_code',
+			__( 'Currency code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $draft['test_currency_code'] ?? '' ),
+			true,
+			__( '3-letter ISO code.', 'cetech-woocommerce-delivery-engine' )
+		);
+		echo '</tbody></table>';
+		submit_button( __( 'Run test', 'cetech-woocommerce-delivery-engine' ), 'secondary', 'submit', false );
+		echo '</form>';
+
+		if ( is_array( $draft ) && isset( $draft['test_result'] ) ) {
+			echo '<p><strong>' . esc_html__( 'Result:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $draft['test_result'] );
+			echo '</p>';
+		}
+	}
+
+	private function render_form( bool $is_edit ): void {
+		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG );
+
+		if ( null !== $draft ) {
+			$record = $this->form_record_from_draft( $draft );
+		} else {
+			$record = $this->load_record_for_form( $is_edit );
+		}
+
+		$title = $is_edit
+			? __( 'Edit Rate Card', 'cetech-woocommerce-delivery-engine' )
+			: __( 'Add Rate Card', 'cetech-woocommerce-delivery-engine' );
+
+		AdminPageRenderer::open_wrap( $title );
+
+		echo '<form method="post" action="">';
+		AdminFormHelper::nonce_field( self::ACTION_SAVE );
+		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_SAVE ) . '" />';
+
+		if ( $is_edit && ! empty( $record['id'] ) ) {
+			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
+		}
+
+		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminFormHelper::text_field( 'code', __( 'Code', 'cetech-woocommerce-delivery-engine' ), (string) ( $record['code'] ?? '' ), true );
+		AdminFormHelper::select_field(
+			'delivery_offer_id',
+			__( 'Delivery offer', 'cetech-woocommerce-delivery-engine' ),
+			$this->required_select_options( $this->delivery_offer_options() ),
+			(string) ( $record['delivery_offer_id'] ?? '' )
+		);
+		AdminFormHelper::select_field(
+			'destination_zone_id',
+			__( 'Destination zone', 'cetech-woocommerce-delivery-engine' ),
+			$this->required_select_options( $this->destination_zone_options() ),
+			(string) ( $record['destination_zone_id'] ?? '' )
+		);
+		AdminFormHelper::select_field(
+			'logistics_profile_id',
+			__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->logistics_profile_options() ),
+			(string) ( $record['logistics_profile_id'] ?? '' ),
+			__( 'Optional. Blank matches any profile in the test tool.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'supplier_id',
+			__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->supplier_options() ),
+			(string) ( $record['supplier_id'] ?? '' ),
+			__( 'Optional.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'origin_id',
+			__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
+			$this->optional_select_options( $this->origin_options() ),
+			(string) ( $record['origin_id'] ?? '' ),
+			__( 'Optional. Must belong to selected supplier when both are set.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'charge_type',
+			__( 'Charge type', 'cetech-woocommerce-delivery-engine' ),
+			$this->charge_type_options(),
+			(string) ( $record['charge_type'] ?? RateCardChargeType::FixedPerShipment->value )
+		);
+		AdminFormHelper::text_field(
+			'base_amount',
+			__( 'Base amount', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['base_amount'] ?? '' ),
+			true
+		);
+		AdminFormHelper::text_field(
+			'currency_code',
+			__( 'Currency code', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['currency_code'] ?? '' ),
+			true,
+			__( 'Stored as base_currency. 3-letter ISO code.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::number_field(
+			'priority',
+			__( 'Priority', 'cetech-woocommerce-delivery-engine' ),
+			isset( $record['priority'] ) ? (int) $record['priority'] : 100
+		);
+		AdminFormHelper::text_field(
+			'effective_from',
+			__( 'Effective from', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['effective_from'] ?? '' ),
+			false,
+			__( 'Optional UTC datetime, e.g. 2026-01-01 00:00:00.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::text_field(
+			'effective_to',
+			__( 'Effective to', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['effective_to'] ?? '' ),
+			false,
+			__( 'Optional UTC datetime.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->status_options(),
+			(string) ( $record['status'] ?? RecordStatus::Active->value )
+		);
+		echo '</tbody></table>';
+		submit_button( $is_edit ? __( 'Update Rate Card', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Rate Card', 'cetech-woocommerce-delivery-engine' ) );
+		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
+		echo '</form>';
+		AdminPageRenderer::close_wrap();
+	}
+
+	private function handle_save(): void {
+		$input  = $this->read_form_input();
+		$errors = $this->validator->validate( $input, isset( $input['id'] ) ? (int) $input['id'] : null );
+
+		if ( [] !== $errors ) {
+			$this->action_handler->notices()->stash_form_draft( self::SLUG, $input );
+			$this->action_handler->notices()->flash_error( implode( ' ', $errors ) );
+			$this->redirect_to_form( $input );
+		}
+
+		$code = AdminFormHelper::sanitize_code( (string) $input['code'] );
+		$id   = isset( $input['id'] ) ? (int) $input['id'] : 0;
+		$existing_by_code = $this->repository->findByCode( $code );
+
+		if ( null !== $existing_by_code && (int) ( $existing_by_code['id'] ?? 0 ) !== $id ) {
+			$this->action_handler->notices()->stash_form_draft( self::SLUG, $input );
+			$this->action_handler->notices()->flash_error( __( 'A rate card with this code already exists.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->redirect_to_form( $input );
+		}
+
+		$previous = $id > 0 ? $this->repository->findById( $id ) : null;
+
+		$payload = [
+			'id'                   => $id,
+			'internal_code'        => $code,
+			'delivery_offer_id'    => (int) $input['delivery_offer_id'],
+			'destination_zone_id'  => (int) $input['destination_zone_id'],
+			'logistics_profile_id' => $this->nullable_int( $input['logistics_profile_id'] ?? null ),
+			'supplier_id'          => $this->nullable_int( $input['supplier_id'] ?? null ),
+			'origin_id'            => $this->nullable_int( $input['origin_id'] ?? null ),
+			'charge_type'          => (string) $input['charge_type'],
+			'base_amount'          => trim( (string) $input['base_amount'] ),
+			'base_currency'        => strtoupper( trim( (string) $input['currency_code'] ) ),
+			'priority'             => (int) $input['priority'],
+			'effective_from'       => trim( (string) ( $input['effective_from'] ?? '' ) ),
+			'effective_to'         => trim( (string) ( $input['effective_to'] ?? '' ) ),
+			'status'               => (string) $input['status'],
+		];
+
+		$saved_id = $this->repository->save( $payload );
+
+		if ( $saved_id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to save rate card.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log(
+			$id > 0 ? 'updated' : 'created',
+			'rate_card',
+			$saved_id,
+			$previous,
+			$this->repository->findById( $saved_id )
+		);
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success(
+				$id > 0
+					? __( 'Rate card updated.', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Rate card created.', 'cetech-woocommerce-delivery-engine' )
+			);
+		} else {
+			$this->action_handler->notices()->flash_warning(
+				$id > 0
+					? __( 'Rate card updated, but audit logging failed.', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Rate card created, but audit logging failed.', 'cetech-woocommerce-delivery-engine' )
+			);
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function handle_deactivate(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid rate card.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Rate card not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$was_already_inactive = RecordStatus::Inactive->value === (string) ( $previous['status'] ?? '' );
+
+		if ( ! $this->repository->softDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to deactivate rate card.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		if ( $was_already_inactive ) {
+			$this->action_handler->notices()->flash_success( __( 'Rate card is already inactive.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log(
+			'deactivated',
+			'rate_card',
+			$id,
+			$previous,
+			$this->repository->findById( $id )
+		);
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Rate card deactivated.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Rate card deactivated, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function handle_test(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$input = [
+			'test_delivery_offer_id'    => isset( $_POST['test_delivery_offer_id'] ) ? (int) $_POST['test_delivery_offer_id'] : 0,
+			'test_destination_zone_id'  => isset( $_POST['test_destination_zone_id'] ) ? (int) $_POST['test_destination_zone_id'] : 0,
+			'test_logistics_profile_id' => isset( $_POST['test_logistics_profile_id'] ) ? (int) $_POST['test_logistics_profile_id'] : 0,
+			'test_supplier_id'        => isset( $_POST['test_supplier_id'] ) ? (int) $_POST['test_supplier_id'] : 0,
+			'test_origin_id'          => isset( $_POST['test_origin_id'] ) ? (int) $_POST['test_origin_id'] : 0,
+			'test_quantity'           => isset( $_POST['test_quantity'] ) ? (int) $_POST['test_quantity'] : 0,
+			'test_currency_code'      => isset( $_POST['test_currency_code'] ) ? wp_unslash( (string) $_POST['test_currency_code'] ) : '',
+		];
+
+		$errors = $this->validator->validate_test_input( $input );
+
+		if ( [] !== $errors ) {
+			$input['test_result'] = implode( ' ', $errors );
+			$this->action_handler->notices()->stash_form_draft( self::SLUG . '_test', $input );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$result = $this->tester->test(
+			$input['test_delivery_offer_id'],
+			$input['test_destination_zone_id'],
+			$input['test_logistics_profile_id'] > 0 ? $input['test_logistics_profile_id'] : null,
+			$input['test_supplier_id'] > 0 ? $input['test_supplier_id'] : null,
+			$input['test_origin_id'] > 0 ? $input['test_origin_id'] : null,
+			$input['test_quantity'],
+			strtoupper( trim( $input['test_currency_code'] ) )
+		);
+
+		if ( ! $result['matched'] ) {
+			$input['test_result'] = (string) $result['explanation'];
+		} else {
+			$input['test_result'] = sprintf(
+				/* translators: 1: rate card code, 2: charge type, 3: amount, 4: currency, 5: explanation */
+				__( 'Matched: %1$s | Charge: %2$s | Amount: %3$s %4$s | %5$s', 'cetech-woocommerce-delivery-engine' ),
+				(string) ( $result['rate_card_code'] ?? '' ),
+				(string) ( $result['charge_type'] ?? '' ),
+				(string) ( $result['amount'] ?? '' ),
+				(string) ( $result['currency'] ?? '' ),
+				(string) ( $result['explanation'] ?? '' )
+			);
+		}
+
+		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_test', $input );
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_actions( int $id ): string {
+		$edit_url = AdminPageRenderer::edit_url( self::SLUG, $id );
+
+		ob_start();
+		echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'cetech-woocommerce-delivery-engine' ) . '</a> | ';
+		echo '<form method="post" style="display:inline;" onsubmit="return confirm(\'' . esc_js( __( 'Deactivate this rate card?', 'cetech-woocommerce-delivery-engine' ) ) . '\');">';
+		AdminFormHelper::nonce_field( self::ACTION_DEACTIVATE );
+		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_DEACTIVATE ) . '" />';
+		echo '<input type="hidden" name="id" value="' . esc_attr( (string) $id ) . '" />';
+		submit_button( __( 'Deactivate', 'cetech-woocommerce-delivery-engine' ), 'link-delete', 'submit', false );
+		echo '</form>';
+
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * @return array<string, mixed>|null
+	 */
+	private function load_record_for_form( bool $is_edit ): ?array {
+		if ( ! $is_edit ) {
+			return [
+				'priority'      => 100,
+				'charge_type'   => RateCardChargeType::FixedPerShipment->value,
+				'status'        => RecordStatus::Active->value,
+			];
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid edit request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$row = $this->repository->findById( $id );
+
+		if ( null === $row ) {
+			wp_die( esc_html__( 'Rate card not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		return $this->map_row_to_form( $row );
+	}
+
+	/**
+	 * @param array<string, mixed> $draft
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function form_record_from_draft( array $draft ): array {
+		return [
+			'id'                   => isset( $draft['id'] ) ? (int) $draft['id'] : 0,
+			'code'                 => (string) ( $draft['code'] ?? '' ),
+			'delivery_offer_id'    => (string) ( $draft['delivery_offer_id'] ?? '' ),
+			'destination_zone_id'  => (string) ( $draft['destination_zone_id'] ?? '' ),
+			'logistics_profile_id' => (string) ( $draft['logistics_profile_id'] ?? '' ),
+			'supplier_id'          => (string) ( $draft['supplier_id'] ?? '' ),
+			'origin_id'            => (string) ( $draft['origin_id'] ?? '' ),
+			'charge_type'          => (string) ( $draft['charge_type'] ?? '' ),
+			'base_amount'          => (string) ( $draft['base_amount'] ?? '' ),
+			'currency_code'        => (string) ( $draft['currency_code'] ?? '' ),
+			'priority'             => isset( $draft['priority'] ) ? (int) $draft['priority'] : 100,
+			'effective_from'       => (string) ( $draft['effective_from'] ?? '' ),
+			'effective_to'         => (string) ( $draft['effective_to'] ?? '' ),
+			'status'               => (string) ( $draft['status'] ?? RecordStatus::Active->value ),
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $row
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function map_row_to_form( array $row ): array {
+		return [
+			'id'                   => (int) ( $row['id'] ?? 0 ),
+			'code'                 => (string) ( $row['internal_code'] ?? '' ),
+			'delivery_offer_id'    => (string) ( $row['delivery_offer_id'] ?? '' ),
+			'destination_zone_id'  => (string) ( $row['destination_zone_id'] ?? '' ),
+			'logistics_profile_id' => (string) ( $row['logistics_profile_id'] ?? '' ),
+			'supplier_id'          => (string) ( $row['supplier_id'] ?? '' ),
+			'origin_id'            => (string) ( $row['origin_id'] ?? '' ),
+			'charge_type'          => (string) ( $row['charge_type'] ?? '' ),
+			'base_amount'          => (string) ( $row['base_amount'] ?? '' ),
+			'currency_code'        => (string) ( $row['base_currency'] ?? '' ),
+			'priority'             => (int) ( $row['priority'] ?? 100 ),
+			'effective_from'       => (string) ( $row['effective_from'] ?? '' ),
+			'effective_to'         => (string) ( $row['effective_to'] ?? '' ),
+			'status'               => (string) ( $row['status'] ?? RecordStatus::Active->value ),
+		];
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function read_form_input(): array {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		return [
+			'id'                   => isset( $_POST['id'] ) ? (int) $_POST['id'] : 0,
+			'code'                 => isset( $_POST['code'] ) ? wp_unslash( (string) $_POST['code'] ) : '',
+			'delivery_offer_id'    => isset( $_POST['delivery_offer_id'] ) ? (int) $_POST['delivery_offer_id'] : 0,
+			'destination_zone_id'  => isset( $_POST['destination_zone_id'] ) ? (int) $_POST['destination_zone_id'] : 0,
+			'logistics_profile_id' => isset( $_POST['logistics_profile_id'] ) ? (int) $_POST['logistics_profile_id'] : 0,
+			'supplier_id'          => isset( $_POST['supplier_id'] ) ? (int) $_POST['supplier_id'] : 0,
+			'origin_id'            => isset( $_POST['origin_id'] ) ? (int) $_POST['origin_id'] : 0,
+			'charge_type'          => isset( $_POST['charge_type'] ) ? sanitize_key( wp_unslash( (string) $_POST['charge_type'] ) ) : '',
+			'base_amount'          => isset( $_POST['base_amount'] ) ? wp_unslash( (string) $_POST['base_amount'] ) : '',
+			'currency_code'        => isset( $_POST['currency_code'] ) ? wp_unslash( (string) $_POST['currency_code'] ) : '',
+			'priority'             => isset( $_POST['priority'] ) ? (int) $_POST['priority'] : 100,
+			'effective_from'       => isset( $_POST['effective_from'] ) ? wp_unslash( (string) $_POST['effective_from'] ) : '',
+			'effective_to'         => isset( $_POST['effective_to'] ) ? wp_unslash( (string) $_POST['effective_to'] ) : '',
+			'status'               => isset( $_POST['status'] ) ? sanitize_key( wp_unslash( (string) $_POST['status'] ) ) : '',
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $input
+	 */
+	private function redirect_to_form( array $input ): void {
+		$id = isset( $input['id'] ) ? (int) $input['id'] : 0;
+
+		if ( $id > 0 ) {
+			$this->action_handler->redirect(
+				AdminPageRenderer::edit_url( self::SLUG, $id )
+			);
+		}
+
+		$this->action_handler->redirect(
+			add_query_arg( 'action', 'add', AdminPageRenderer::list_url( self::SLUG ) )
+		);
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function delivery_offer_options(): array {
+		$options = [];
+
+		foreach ( $this->delivery_offer_repository->list( [ 'limit' => 500 ] ) as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$options[ (string) $id ] = sprintf(
+				'%s (%s)',
+				(string) ( $row['internal_code'] ?? '' ),
+				(string) ( $row['public_label'] ?? '' )
+			);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function destination_zone_options(): array {
+		$options = [];
+
+		foreach ( $this->destination_zone_repository->list( [ 'limit' => 500 ] ) as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$options[ (string) $id ] = sprintf(
+				'%s (%s)',
+				(string) ( $row['internal_code'] ?? '' ),
+				(string) ( $row['internal_name'] ?? '' )
+			);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function logistics_profile_options(): array {
+		$options = [];
+
+		foreach ( $this->logistics_profile_repository->list( [ 'limit' => 500 ] ) as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$options[ (string) $id ] = sprintf(
+				'%s (%s)',
+				(string) ( $row['internal_code'] ?? '' ),
+				(string) ( $row['internal_name'] ?? '' )
+			);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function supplier_options(): array {
+		$options = [];
+
+		foreach ( $this->supplier_repository->list( [ 'limit' => 500 ] ) as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$options[ (string) $id ] = sprintf(
+				'%s (%s)',
+				(string) ( $row['internal_code'] ?? '' ),
+				(string) ( $row['internal_name'] ?? '' )
+			);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function origin_options(): array {
+		$options = [];
+
+		foreach ( $this->origin_repository->list( [ 'limit' => 500 ] ) as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$options[ (string) $id ] = sprintf(
+				'%s (%s)',
+				(string) ( $row['internal_code'] ?? '' ),
+				(string) ( $row['internal_name'] ?? '' )
+			);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function charge_type_options(): array {
+		$options = [];
+
+		foreach ( RateCardChargeType::cases() as $case ) {
+			$options[ $case->value ] = $case->value;
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function status_options(): array {
+		$options = [];
+
+		foreach ( RecordStatus::cases() as $case ) {
+			$options[ $case->value ] = $case->value;
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @param array<string, string> $options
+	 *
+	 * @return array<string, string>
+	 */
+	private function required_select_options( array $options ): array {
+		return array_merge(
+			[ '' => __( '— Select —', 'cetech-woocommerce-delivery-engine' ) ],
+			$options
+		);
+	}
+
+	/**
+	 * @param array<string, string> $options
+	 *
+	 * @return array<string, string>
+	 */
+	private function optional_select_options( array $options ): array {
+		return array_merge(
+			[ '' => __( '— None —', 'cetech-woocommerce-delivery-engine' ) ],
+			$options
+		);
+	}
+
+	/**
+	 * @return array{
+	 *     offers: array<int, array<string, mixed>>,
+	 *     zones: array<int, array<string, mixed>>,
+	 *     profiles: array<int, array<string, mixed>>,
+	 *     suppliers: array<int, array<string, mixed>>,
+	 *     origins: array<int, array<string, mixed>>
+	 * }
+	 */
+	private function build_lookups(): array {
+		return [
+			'offers'    => $this->index_by_id( $this->delivery_offer_repository->list( [ 'limit' => 500 ] ) ),
+			'zones'     => $this->index_by_id( $this->destination_zone_repository->list( [ 'limit' => 500 ] ) ),
+			'profiles'  => $this->index_by_id( $this->logistics_profile_repository->list( [ 'limit' => 500 ] ) ),
+			'suppliers' => $this->index_by_id( $this->supplier_repository->list( [ 'limit' => 500 ] ) ),
+			'origins'   => $this->index_by_id( $this->origin_repository->list( [ 'limit' => 500 ] ) ),
+		];
+	}
+
+	/**
+	 * @param list<array<string, mixed>> $rows
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function index_by_id( array $rows ): array {
+		$indexed = [];
+
+		foreach ( $rows as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id > 0 ) {
+				$indexed[ $id ] = $row;
+			}
+		}
+
+		return $indexed;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $lookup
+	 */
+	private function lookup_offer_label( array $lookup, int $id ): string {
+		if ( $id <= 0 || ! isset( $lookup[ $id ] ) ) {
+			return '—';
+		}
+
+		return sprintf(
+			'%s (%s)',
+			(string) ( $lookup[ $id ]['internal_code'] ?? '' ),
+			(string) ( $lookup[ $id ]['public_label'] ?? '' )
+		);
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $lookup
+	 */
+	private function lookup_zone_label( array $lookup, int $id ): string {
+		if ( $id <= 0 || ! isset( $lookup[ $id ] ) ) {
+			return '—';
+		}
+
+		return sprintf(
+			'%s (%s)',
+			(string) ( $lookup[ $id ]['internal_code'] ?? '' ),
+			(string) ( $lookup[ $id ]['internal_name'] ?? '' )
+		);
+	}
+
+	private function lookup_optional( array $lookup, mixed $id ): string {
+		if ( null === $id || '' === $id ) {
+			return '—';
+		}
+
+		$int_id = (int) $id;
+
+		if ( $int_id <= 0 || ! isset( $lookup[ $int_id ] ) ) {
+			return '—';
+		}
+
+		return sprintf(
+			'%s (%s)',
+			(string) ( $lookup[ $int_id ]['internal_code'] ?? '' ),
+			(string) ( $lookup[ $int_id ]['internal_name'] ?? '' )
+		);
+	}
+
+	private function nullable_int( mixed $value ): ?int {
+		if ( null === $value || '' === $value || 0 === (int) $value ) {
+			return null;
+		}
+
+		$int = (int) $value;
+
+		return $int > 0 ? $int : null;
+	}
+}

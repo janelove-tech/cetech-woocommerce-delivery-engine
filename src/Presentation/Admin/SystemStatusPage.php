@@ -14,6 +14,7 @@ use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
 use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
 use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
 use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
+use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
@@ -40,7 +41,8 @@ final class SystemStatusPage {
 		private DestinationRuleRepositoryInterface $destination_rule_repository,
 		private PickupLocationRepositoryInterface $pickup_location_repository,
 		private SupplierRepositoryInterface $supplier_repository,
-		private OriginRepositoryInterface $origin_repository
+		private OriginRepositoryInterface $origin_repository,
+		private RateCardRepositoryInterface $rate_card_repository
 	) {
 	}
 
@@ -120,6 +122,7 @@ final class SystemStatusPage {
 				__( 'Pickup locations', 'cetech-woocommerce-delivery-engine' ) => (string) $this->pickup_location_repository->count_all(),
 				__( 'Suppliers', 'cetech-woocommerce-delivery-engine' ) => (string) $this->supplier_repository->count_all(),
 				__( 'Origins', 'cetech-woocommerce-delivery-engine' ) => (string) $this->origin_repository->count_all(),
+				__( 'Rate cards', 'cetech-woocommerce-delivery-engine' ) => (string) $this->rate_card_repository->count_all(),
 			]
 		);
 
@@ -218,8 +221,9 @@ final class SystemStatusPage {
 		$pickup_count  = $this->pickup_location_repository->count_all();
 		$supplier_count = $this->supplier_repository->count_all();
 		$origin_count   = $this->origin_repository->count_all();
+		$rate_card_count = $this->rate_card_repository->count_all();
 
-		if ( $profile_count > 0 && $offer_count > 0 && $zone_count > 0 && $pickup_count > 0 && $supplier_count > 0 && $origin_count > 0 ) {
+		if ( $profile_count > 0 && $offer_count > 0 && $zone_count > 0 && $pickup_count > 0 && $supplier_count > 0 && $origin_count > 0 && $rate_card_count > 0 ) {
 			return;
 		}
 
@@ -246,7 +250,11 @@ final class SystemStatusPage {
 		}
 
 		if ( 0 === $origin_count ) {
-			echo esc_html__( 'Warning: no origins are configured yet.', 'cetech-woocommerce-delivery-engine' );
+			echo esc_html__( 'Warning: no origins are configured yet.', 'cetech-woocommerce-delivery-engine' ) . ' ';
+		}
+
+		if ( 0 === $rate_card_count ) {
+			echo esc_html__( 'Warning: no rate cards are configured yet.', 'cetech-woocommerce-delivery-engine' );
 		}
 
 		echo '</p></div>';

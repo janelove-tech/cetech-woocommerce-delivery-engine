@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Presentation\Admin;
 
 /**
- * Registers Delivery Engine admin menus for Phase 2B3.
+ * Registers Delivery Engine admin menus for Phase 2B4.
  */
 final class AdminMenu {
 
@@ -19,7 +19,8 @@ final class AdminMenu {
 		private DeliveryOffersPage $delivery_offers_page,
 		private DestinationZonesPage $destination_zones_page,
 		private PickupLocationsPage $pickup_locations_page,
-		private SuppliersOriginsPage $suppliers_origins_page
+		private SuppliersOriginsPage $suppliers_origins_page,
+		private RateCardsPage $rate_cards_page
 	) {
 	}
 
@@ -31,6 +32,7 @@ final class AdminMenu {
 		add_action( 'admin_init', [ $this->destination_zones_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->pickup_locations_page, 'handle_actions' ] );
 		add_action( 'admin_init', [ $this->suppliers_origins_page, 'handle_actions' ] );
+		add_action( 'admin_init', [ $this->rate_cards_page, 'handle_actions' ] );
 	}
 
 	public function add_menus(): void {
@@ -112,6 +114,17 @@ final class AdminMenu {
 			);
 		}
 
+		if ( current_user_can( 'manage_delivery_rate_cards' ) ) {
+			add_submenu_page(
+				self::PARENT_SLUG,
+				__( 'Rate Cards', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Rate Cards', 'cetech-woocommerce-delivery-engine' ),
+				'manage_delivery_rate_cards',
+				RateCardsPage::SLUG,
+				[ $this->rate_cards_page, 'render' ]
+			);
+		}
+
 		remove_submenu_page( self::PARENT_SLUG, self::PARENT_SLUG );
 	}
 
@@ -120,6 +133,7 @@ final class AdminMenu {
 			|| current_user_can( 'manage_logistics_profiles' )
 			|| current_user_can( 'manage_delivery_offers' )
 			|| current_user_can( 'manage_delivery_zones' )
-			|| current_user_can( 'manage_private_sources' );
+			|| current_user_can( 'manage_private_sources' )
+			|| current_user_can( 'manage_delivery_rate_cards' );
 	}
 }

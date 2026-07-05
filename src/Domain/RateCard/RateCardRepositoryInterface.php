@@ -29,4 +29,6 @@ interface RateCardRepositoryInterface {
 	public function list( array $criteria = [] ): array;
 
 	public function softDelete( int $id ): bool;
+
+	public function count_all(): int;
 }

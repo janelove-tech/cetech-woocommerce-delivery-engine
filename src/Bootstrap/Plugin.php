@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Bootstrap;
 
+use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
@@ -39,6 +40,7 @@ use CetechDeliveryEngine\Presentation\Admin\DestinationZoneTestMatcher;
 use CetechDeliveryEngine\Presentation\Admin\DestinationZonesPage;
 use CetechDeliveryEngine\Presentation\Admin\LogisticsProfilesPage;
 use CetechDeliveryEngine\Presentation\Admin\PickupLocationsPage;
+use CetechDeliveryEngine\Presentation\Admin\RateCardsPage;
 use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
@@ -47,6 +49,7 @@ use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationZoneValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\LogisticsProfileValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\OriginValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\PickupLocationValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\RateCardValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\SupplierValidator;
 use CetechDeliveryEngine\Support\AdminNotice;
 use CetechDeliveryEngine\Support\Logger;
@@ -256,10 +259,28 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			RateCardValidator::class,
+			static fn ( ServiceContainer $container ): RateCardValidator => new RateCardValidator(
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( DestinationZoneRepositoryInterface::class ),
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
 			DestinationZoneTestMatcher::class,
 			static fn ( ServiceContainer $container ): DestinationZoneTestMatcher => new DestinationZoneTestMatcher(
 				$container->get( DestinationZoneRepositoryInterface::class ),
 				$container->get( DestinationRuleRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
+			AdminRateCardTester::class,
+			static fn ( ServiceContainer $container ): AdminRateCardTester => new AdminRateCardTester(
+				$container->get( RateCardRepositoryInterface::class )
 			)
 		);
 
@@ -319,6 +340,22 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			RateCardsPage::class,
+			static fn ( ServiceContainer $container ): RateCardsPage => new RateCardsPage(
+				$container->get( RateCardRepositoryInterface::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( DestinationZoneRepositoryInterface::class ),
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( RateCardValidator::class ),
+				$container->get( AdminRateCardTester::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
 			SystemStatusPage::class,
 			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
 				$container->get( Requirements::class ),
@@ -331,7 +368,8 @@ final class Plugin {
 				$container->get( DestinationRuleRepositoryInterface::class ),
 				$container->get( PickupLocationRepositoryInterface::class ),
 				$container->get( SupplierRepositoryInterface::class ),
-				$container->get( OriginRepositoryInterface::class )
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( RateCardRepositoryInterface::class )
 			)
 		);
 
@@ -343,7 +381,8 @@ final class Plugin {
 				$container->get( DeliveryOffersPage::class ),
 				$container->get( DestinationZonesPage::class ),
 				$container->get( PickupLocationsPage::class ),
-				$container->get( SuppliersOriginsPage::class )
+				$container->get( SuppliersOriginsPage::class ),
+				$container->get( RateCardsPage::class )
 			)
 		);
 	}
