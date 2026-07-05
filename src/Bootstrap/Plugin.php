@@ -39,12 +39,15 @@ use CetechDeliveryEngine\Presentation\Admin\DestinationZoneTestMatcher;
 use CetechDeliveryEngine\Presentation\Admin\DestinationZonesPage;
 use CetechDeliveryEngine\Presentation\Admin\LogisticsProfilesPage;
 use CetechDeliveryEngine\Presentation\Admin\PickupLocationsPage;
+use CetechDeliveryEngine\Presentation\Admin\SuppliersOriginsPage;
 use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DeliveryOfferValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationRuleValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\DestinationZoneValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\LogisticsProfileValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\OriginValidator;
 use CetechDeliveryEngine\Presentation\Admin\Validation\PickupLocationValidator;
+use CetechDeliveryEngine\Presentation\Admin\Validation\SupplierValidator;
 use CetechDeliveryEngine\Support\AdminNotice;
 use CetechDeliveryEngine\Support\Logger;
 
@@ -241,6 +244,18 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			SupplierValidator::class,
+			static fn (): SupplierValidator => new SupplierValidator()
+		);
+
+		$this->container->singleton(
+			OriginValidator::class,
+			static fn ( ServiceContainer $container ): OriginValidator => new OriginValidator(
+				$container->get( SupplierRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
 			DestinationZoneTestMatcher::class,
 			static fn ( ServiceContainer $container ): DestinationZoneTestMatcher => new DestinationZoneTestMatcher(
 				$container->get( DestinationZoneRepositoryInterface::class ),
@@ -292,6 +307,18 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			SuppliersOriginsPage::class,
+			static fn ( ServiceContainer $container ): SuppliersOriginsPage => new SuppliersOriginsPage(
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( SupplierValidator::class ),
+				$container->get( OriginValidator::class ),
+				$container->get( AdminActionHandler::class ),
+				$container->get( ConfigurationAuditLogger::class )
+			)
+		);
+
+		$this->container->singleton(
 			SystemStatusPage::class,
 			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
 				$container->get( Requirements::class ),
@@ -302,7 +329,9 @@ final class Plugin {
 				$container->get( DeliveryOfferRepositoryInterface::class ),
 				$container->get( DestinationZoneRepositoryInterface::class ),
 				$container->get( DestinationRuleRepositoryInterface::class ),
-				$container->get( PickupLocationRepositoryInterface::class )
+				$container->get( PickupLocationRepositoryInterface::class ),
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class )
 			)
 		);
 
@@ -313,7 +342,8 @@ final class Plugin {
 				$container->get( LogisticsProfilesPage::class ),
 				$container->get( DeliveryOffersPage::class ),
 				$container->get( DestinationZonesPage::class ),
-				$container->get( PickupLocationsPage::class )
+				$container->get( PickupLocationsPage::class ),
+				$container->get( SuppliersOriginsPage::class )
 			)
 		);
 	}
