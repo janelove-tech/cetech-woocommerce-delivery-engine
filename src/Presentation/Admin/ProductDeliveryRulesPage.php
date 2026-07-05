@@ -847,17 +847,12 @@ final class ProductDeliveryRulesPage {
 	/**
 	 * @param array<string, mixed> $input
 	 */
-	private function redirect_to_form( array $input ): void {
+	private function redirect_to_form( array $input ): never {
 		$id = isset( $input['id'] ) ? (int) $input['id'] : 0;
 
-		if ( $id > 0 ) {
-			$this->action_handler->redirect(
-				AdminPageRenderer::edit_url( self::SLUG, $id )
-			);
-		}
-
 		$this->action_handler->redirect(
-			add_query_arg( 'action', 'add', AdminPageRenderer::list_url( self::SLUG ) )
+			self::SLUG,
+			$id > 0 ? [ 'action' => 'edit', 'id' => $id ] : [ 'action' => 'add' ]
 		);
 	}
 
