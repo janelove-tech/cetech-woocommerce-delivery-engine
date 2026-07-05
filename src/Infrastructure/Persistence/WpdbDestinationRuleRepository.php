@@ -70,6 +70,18 @@ final class WpdbDestinationRuleRepository extends AbstractWpdbRepository impleme
 		return parent::count_all();
 	}
 
+	public function list( int $limit = 500 ): array {
+		global $wpdb;
+
+		$table = $this->table_name();
+		$sql   = "SELECT * FROM `{$table}` ORDER BY zone_id ASC, id ASC LIMIT %d";
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, max( 1, min( 500, $limit ) ) ), ARRAY_A );
+
+		return is_array( $rows ) ? $rows : [];
+	}
+
 	/**
 	 * @param array<string, mixed> $rule
 	 */

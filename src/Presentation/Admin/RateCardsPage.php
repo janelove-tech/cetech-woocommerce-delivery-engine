@@ -57,9 +57,7 @@ final class RateCardsPage {
 	}
 
 	public function render(): void {
-		if ( ! current_user_can( 'manage_delivery_rate_cards' ) ) {
-			wp_die( esc_html__( 'You do not have permission to access this page.', 'cetech-woocommerce-delivery-engine' ) );
-		}
+		AdminPageAccess::require_capability( 'manage_delivery_rate_cards' );
 
 		$this->action_handler->notices()->render_notices();
 

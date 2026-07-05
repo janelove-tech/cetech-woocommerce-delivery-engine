@@ -19,4 +19,9 @@ interface DestinationRuleRepositoryInterface {
 	public function replaceForZone( int $zone_id, array $rules ): bool;
 
 	public function count_all(): int;
+
+	/**
+	 * @return list<array<string, mixed>>
+	 */
+	public function list( int $limit = 500 ): array;
 }

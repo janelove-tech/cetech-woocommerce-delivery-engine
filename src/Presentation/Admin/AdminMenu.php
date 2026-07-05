@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Presentation\Admin;
 
 /**
- * Registers Delivery Engine admin menus for Phase 2B4.
+ * Registers Delivery Engine admin menus for Phase 2B5.
  */
 final class AdminMenu {
 
@@ -43,7 +43,7 @@ final class AdminMenu {
 		add_menu_page(
 			__( 'Delivery Engine', 'cetech-woocommerce-delivery-engine' ),
 			__( 'Delivery Engine', 'cetech-woocommerce-delivery-engine' ),
-			'manage_delivery_settings',
+			$this->resolve_parent_menu_capability(),
 			self::PARENT_SLUG,
 			[ $this->system_status_page, 'render' ],
 			'dashicons-store',
@@ -135,5 +135,28 @@ final class AdminMenu {
 			|| current_user_can( 'manage_delivery_zones' )
 			|| current_user_can( 'manage_private_sources' )
 			|| current_user_can( 'manage_delivery_rate_cards' );
+	}
+
+	/**
+	 * Use the first delivery capability the current user has so custom roles
+	 * with subset caps can still see the parent menu entry.
+	 */
+	private function resolve_parent_menu_capability(): string {
+		$caps = [
+			'manage_delivery_settings',
+			'manage_logistics_profiles',
+			'manage_delivery_offers',
+			'manage_delivery_zones',
+			'manage_private_sources',
+			'manage_delivery_rate_cards',
+		];
+
+		foreach ( $caps as $capability ) {
+			if ( current_user_can( $capability ) ) {
+				return $capability;
+			}
+		}
+
+		return 'manage_delivery_settings';
 	}
 }

@@ -36,9 +36,7 @@ final class LogisticsProfilesPage {
 	}
 
 	public function render(): void {
-		if ( ! current_user_can( 'manage_logistics_profiles' ) ) {
-			wp_die( esc_html__( 'You do not have permission to access this page.', 'cetech-woocommerce-delivery-engine' ) );
-		}
+		AdminPageAccess::require_capability( 'manage_logistics_profiles' );
 
 		$this->action_handler->notices()->render_notices();
 

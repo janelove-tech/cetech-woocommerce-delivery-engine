@@ -1,0 +1,952 @@
+<?php
+
+declare(strict_types=1);
+
+namespace CetechDeliveryEngine\Application\Diagnostics;
+
+use CetechDeliveryEngine\Core\Versioning\MigrationStatus;
+use CetechDeliveryEngine\Core\Versioning\SchemaVersion;
+use CetechDeliveryEngine\Domain\DeliveryOffer\DeliveryOfferRepositoryInterface;
+use CetechDeliveryEngine\Domain\Enum\DestinationRuleMatchMode;
+use CetechDeliveryEngine\Domain\Enum\DestinationRuleType;
+use CetechDeliveryEngine\Domain\Enum\RateCardChargeType;
+use CetechDeliveryEngine\Domain\Enum\RecordStatus;
+use CetechDeliveryEngine\Domain\LogisticsProfile\LogisticsProfileRepositoryInterface;
+use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
+use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
+use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
+use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
+use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
+
+/**
+ * Read-only configuration health diagnostics for wp-admin use only.
+ *
+ * Does not write configuration data or expose customer/order/payment information.
+ */
+final class ConfigurationHealthChecker {
+
+	private const LIST_LIMIT = 500;
+
+	public function __construct(
+		private LogisticsProfileRepositoryInterface $logistics_profile_repository,
+		private DeliveryOfferRepositoryInterface $delivery_offer_repository,
+		private DestinationZoneRepositoryInterface $destination_zone_repository,
+		private DestinationRuleRepositoryInterface $destination_rule_repository,
+		private PickupLocationRepositoryInterface $pickup_location_repository,
+		private SupplierRepositoryInterface $supplier_repository,
+		private OriginRepositoryInterface $origin_repository,
+		private RateCardRepositoryInterface $rate_card_repository
+	) {
+	}
+
+	/**
+	 * @return array{
+	 *     diagnostics: list<ConfigurationDiagnostic>,
+	 *     summary: array{error: int, warning: int, info: int}
+	 * }
+	 */
+	public function run(): array {
+		$diagnostics = [];
+
+		$this->check_baseline( $diagnostics );
+		$this->check_schema( $diagnostics );
+		$this->check_destinations( $diagnostics );
+		$this->check_suppliers_origins( $diagnostics );
+		$this->check_rate_cards( $diagnostics );
+		$this->check_privacy( $diagnostics );
+
+		return [
+			'diagnostics' => $diagnostics,
+			'summary'     => $this->summarize( $diagnostics ),
+		];
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_baseline( array &$diagnostics ): void {
+		$checks = [
+			'zero_logistics_profiles' => [
+				'count' => $this->logistics_profile_repository->count_all(),
+				'title' => __( 'No logistics profiles', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No logistics profiles are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'logistics_profile',
+			],
+			'zero_delivery_offers' => [
+				'count' => $this->delivery_offer_repository->count_all(),
+				'title' => __( 'No delivery offers', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No delivery offers are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'delivery_offer',
+			],
+			'zero_destination_zones' => [
+				'count' => $this->destination_zone_repository->count_all(),
+				'title' => __( 'No destination zones', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No destination zones are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'destination_zone',
+			],
+			'zero_pickup_locations' => [
+				'count' => $this->pickup_location_repository->count_all(),
+				'title' => __( 'No pickup locations', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No pickup locations are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'pickup_location',
+			],
+			'zero_suppliers' => [
+				'count' => $this->supplier_repository->count_all(),
+				'title' => __( 'No suppliers', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No suppliers are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'supplier',
+			],
+			'zero_origins' => [
+				'count' => $this->origin_repository->count_all(),
+				'title' => __( 'No origins', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No origins are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'origin',
+			],
+			'zero_rate_cards' => [
+				'count' => $this->rate_card_repository->count_all(),
+				'title' => __( 'No rate cards', 'cetech-woocommerce-delivery-engine' ),
+				'message' => __( 'No rate cards are configured.', 'cetech-woocommerce-delivery-engine' ),
+				'entity'  => 'rate_card',
+			],
+		];
+
+		foreach ( $checks as $code => $check ) {
+			if ( 0 === (int) $check['count'] ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					$code,
+					(string) $check['title'],
+					(string) $check['message'],
+					(string) $check['entity']
+				);
+			}
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_schema( array &$diagnostics ): void {
+		if ( ! SchemaVersion::is_up_to_date() ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				'schema_version_outdated',
+				__( 'Schema version out of date', 'cetech-woocommerce-delivery-engine' ),
+				sprintf(
+					/* translators: 1: installed schema version, 2: target schema version */
+					__( 'Installed schema version is %1$s; target is %2$s.', 'cetech-woocommerce-delivery-engine' ),
+					SchemaVersion::get(),
+					SchemaVersion::target()
+				),
+				'schema',
+				null,
+				sprintf( 'installed=%s target=%s', SchemaVersion::get(), SchemaVersion::target() )
+			);
+		}
+
+		$missing = ConfigurationTables::missing();
+
+		if ( [] !== $missing ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				'configuration_tables_missing',
+				__( 'Missing configuration tables', 'cetech-woocommerce-delivery-engine' ),
+				__( 'One or more configuration tables are missing.', 'cetech-woocommerce-delivery-engine' ),
+				'schema',
+				null,
+				implode( ', ', $missing )
+			);
+		} elseif ( ! ConfigurationTables::all_exist() ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				'configuration_tables_incomplete',
+				__( 'Configuration tables incomplete', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Not all configuration tables could be verified.', 'cetech-woocommerce-delivery-engine' ),
+				'schema'
+			);
+		}
+
+		$migration = MigrationStatus::get();
+
+		if ( is_array( $migration ) && isset( $migration['status'] ) && 'failed' === (string) $migration['status'] ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				'last_migration_failed',
+				__( 'Last migration failed', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The most recent schema migration did not complete successfully.', 'cetech-woocommerce-delivery-engine' ),
+				'schema',
+				null,
+				isset( $migration['migration_id'] ) ? (string) $migration['migration_id'] : null
+			);
+		} elseif ( null === $migration ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Info,
+				'last_migration_unknown',
+				__( 'Migration status unknown', 'cetech-woocommerce-delivery-engine' ),
+				__( 'No migration status record was found.', 'cetech-woocommerce-delivery-engine' ),
+				'schema'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_destinations( array &$diagnostics ): void {
+		$zones     = $this->destination_zone_repository->list( [ 'limit' => self::LIST_LIMIT ] );
+		$zones_by_id = $this->index_by_id( $zones );
+		$rules     = $this->destination_rule_repository->list( self::LIST_LIMIT );
+		$rules_by_zone = [];
+
+		foreach ( $rules as $rule ) {
+			$zone_id = (int) ( $rule['zone_id'] ?? 0 );
+			$rules_by_zone[ $zone_id ][] = $rule;
+		}
+
+		$fallback_count = 0;
+
+		foreach ( $zones as $zone ) {
+			$zone_id = (int) ( $zone['id'] ?? 0 );
+			$status  = (string) ( $zone['status'] ?? '' );
+
+			if ( RecordStatus::Active->value !== $status ) {
+				continue;
+			}
+
+			if ( ! empty( $zone['is_fallback'] ) ) {
+				++$fallback_count;
+			}
+
+			$zone_rules = $rules_by_zone[ $zone_id ] ?? [];
+
+			if ( [] === $zone_rules && empty( $zone['is_fallback'] ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'active_zone_without_rules',
+					__( 'Active zone without rules', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active destination zone has no rules and is not marked as fallback.', 'cetech-woocommerce-delivery-engine' ),
+					'destination_zone',
+					$zone_id,
+					$this->entity_code_detail( $zone, 'internal_code' )
+				);
+			}
+		}
+
+		if ( $fallback_count > 1 ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'multiple_active_fallback_zones',
+				__( 'Multiple fallback zones', 'cetech-woocommerce-delivery-engine' ),
+				sprintf(
+					/* translators: %d: number of active fallback zones */
+					__( '%d active destination zones are marked as fallback.', 'cetech-woocommerce-delivery-engine' ),
+					$fallback_count
+				),
+				'destination_zone'
+			);
+		}
+
+		foreach ( $rules as $rule ) {
+			$rule_id = (int) ( $rule['id'] ?? 0 );
+			$zone_id = (int) ( $rule['zone_id'] ?? 0 );
+
+			if ( $zone_id <= 0 || ! isset( $zones_by_id[ $zone_id ] ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Error,
+					'destination_rule_orphan_zone',
+					__( 'Orphan destination rule', 'cetech-woocommerce-delivery-engine' ),
+					__( 'A destination rule references a zone that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+					'destination_rule',
+					$rule_id,
+					sprintf( 'zone_id=%d', $zone_id )
+				);
+			}
+
+			$rule_type = (string) ( $rule['rule_type'] ?? '' );
+
+			if ( ! $this->is_valid_rule_type( $rule_type ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'destination_rule_invalid_type',
+					__( 'Invalid destination rule type', 'cetech-woocommerce-delivery-engine' ),
+					__( 'A destination rule uses an unknown rule type.', 'cetech-woocommerce-delivery-engine' ),
+					'destination_rule',
+					$rule_id,
+					sprintf( 'rule_type=%s', $rule_type )
+				);
+			}
+
+			$match_mode = (string) ( $rule['match_mode'] ?? '' );
+
+			if ( ! $this->is_valid_match_mode( $match_mode ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'destination_rule_invalid_match_mode',
+					__( 'Invalid destination rule match mode', 'cetech-woocommerce-delivery-engine' ),
+					__( 'A destination rule uses an unknown match mode.', 'cetech-woocommerce-delivery-engine' ),
+					'destination_rule',
+					$rule_id,
+					sprintf( 'match_mode=%s', $match_mode )
+				);
+			}
+		}
+
+		foreach ( $this->pickup_location_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $location ) {
+			$location_id = (int) ( $location['id'] ?? 0 );
+			$status      = (string) ( $location['status'] ?? '' );
+
+			if ( RecordStatus::Active->value !== $status ) {
+				continue;
+			}
+
+			if ( $this->is_empty_public_address( $location['public_address'] ?? null ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'pickup_location_empty_address',
+					__( 'Pickup location missing address', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active pickup location has no public address configured.', 'cetech-woocommerce-delivery-engine' ),
+					'pickup_location',
+					$location_id,
+					$this->entity_code_detail( $location, 'internal_code' )
+				);
+			}
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_suppliers_origins( array &$diagnostics ): void {
+		$suppliers     = $this->supplier_repository->list( [ 'limit' => self::LIST_LIMIT ] );
+		$suppliers_by_id = $this->index_by_id( $suppliers );
+		$origins_by_supplier = [];
+
+		foreach ( $this->origin_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $origin ) {
+			$origin_id   = (int) ( $origin['id'] ?? 0 );
+			$supplier_id = (int) ( $origin['supplier_id'] ?? 0 );
+
+			if ( $supplier_id > 0 ) {
+				$origins_by_supplier[ $supplier_id ] = ( $origins_by_supplier[ $supplier_id ] ?? 0 ) + 1;
+			}
+
+			if ( $supplier_id <= 0 || ! isset( $suppliers_by_id[ $supplier_id ] ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Error,
+					'origin_missing_supplier',
+					__( 'Origin missing supplier', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An origin references a supplier that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+					'origin',
+					$origin_id,
+					sprintf( 'supplier_id=%d', $supplier_id )
+				);
+				continue;
+			}
+
+			$supplier_status = (string) ( $suppliers_by_id[ $supplier_id ]['status'] ?? '' );
+
+			if ( $this->is_non_active_status( $supplier_status ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'origin_inactive_supplier',
+					__( 'Origin linked to inactive supplier', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An origin is linked to a supplier that is not active.', 'cetech-woocommerce-delivery-engine' ),
+					'origin',
+					$origin_id,
+					sprintf( 'supplier_id=%d status=%s', $supplier_id, $supplier_status )
+				);
+			}
+
+			if ( ! $this->is_valid_internal_address_json( $origin['internal_address'] ?? null ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Warning,
+					'origin_invalid_internal_address',
+					__( 'Origin invalid address JSON', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An origin has internal address data that is not valid JSON.', 'cetech-woocommerce-delivery-engine' ),
+					'origin',
+					$origin_id,
+					$this->entity_code_detail( $origin, 'internal_code' )
+				);
+			}
+		}
+
+		foreach ( $suppliers as $supplier ) {
+			$supplier_id = (int) ( $supplier['id'] ?? 0 );
+			$status      = (string) ( $supplier['status'] ?? '' );
+
+			if ( RecordStatus::Active->value !== $status ) {
+				continue;
+			}
+
+			if ( 0 === ( $origins_by_supplier[ $supplier_id ] ?? 0 ) ) {
+				$this->add(
+					$diagnostics,
+					DiagnosticSeverity::Info,
+					'active_supplier_without_origins',
+					__( 'Active supplier without origins', 'cetech-woocommerce-delivery-engine' ),
+					__( 'An active supplier has no origins configured.', 'cetech-woocommerce-delivery-engine' ),
+					'supplier',
+					$supplier_id,
+					$this->entity_code_detail( $supplier, 'internal_code' )
+				);
+			}
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_rate_cards( array &$diagnostics ): void {
+		$offers    = $this->index_by_id( $this->delivery_offer_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$zones     = $this->index_by_id( $this->destination_zone_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$profiles  = $this->index_by_id( $this->logistics_profile_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$suppliers = $this->index_by_id( $this->supplier_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$origins   = $this->index_by_id( $this->origin_repository->list( [ 'limit' => self::LIST_LIMIT ] ) );
+		$now       = gmdate( 'Y-m-d H:i:s' );
+		$signatures = [];
+
+		foreach ( $this->rate_card_repository->list( [ 'limit' => self::LIST_LIMIT ] ) as $card ) {
+			$card_id = (int) ( $card['id'] ?? 0 );
+			$status  = (string) ( $card['status'] ?? '' );
+
+			$this->check_rate_card_delivery_offer( $diagnostics, $card, $offers );
+			$this->check_rate_card_destination_zone( $diagnostics, $card, $zones );
+			$this->check_rate_card_optional_fk(
+				$diagnostics,
+				$card,
+				'logistics_profile_id',
+				'logistics_profile',
+				$profiles,
+				'rate_card_missing_logistics_profile',
+				'rate_card_inactive_logistics_profile'
+			);
+			$this->check_rate_card_optional_fk(
+				$diagnostics,
+				$card,
+				'supplier_id',
+				'supplier',
+				$suppliers,
+				'rate_card_missing_supplier',
+				'rate_card_inactive_supplier'
+			);
+			$this->check_rate_card_optional_fk(
+				$diagnostics,
+				$card,
+				'origin_id',
+				'origin',
+				$origins,
+				'rate_card_missing_origin',
+				'rate_card_inactive_origin'
+			);
+
+			if ( RecordStatus::Active->value === $status ) {
+				$this->check_active_rate_card_values( $diagnostics, $card, $now );
+
+				$signature = $this->rate_card_match_signature( $card );
+				$signatures[ $signature ]   = $signatures[ $signature ] ?? [];
+				$signatures[ $signature ][] = $card_id;
+			}
+		}
+
+		foreach ( $signatures as $signature => $card_ids ) {
+			if ( count( $card_ids ) < 2 ) {
+				continue;
+			}
+
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'duplicate_active_rate_card_match',
+				__( 'Possible duplicate rate cards', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Multiple active rate cards share the same matching dimensions and priority.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				(int) $card_ids[0],
+				sprintf( 'signature=%s ids=%s', $signature, implode( ',', array_map( 'strval', $card_ids ) ) )
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 * @param array<int, array<string, mixed>> $offers
+	 * @param array<string, mixed> $card
+	 */
+	private function check_rate_card_delivery_offer( array &$diagnostics, array $card, array $offers ): void {
+		$card_id = (int) ( $card['id'] ?? 0 );
+		$offer_id = (int) ( $card['delivery_offer_id'] ?? 0 );
+
+		if ( $offer_id <= 0 || ! isset( $offers[ $offer_id ] ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				'rate_card_missing_delivery_offer',
+				__( 'Rate card missing delivery offer', 'cetech-woocommerce-delivery-engine' ),
+				__( 'A rate card references a delivery offer that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'delivery_offer_id=%d', $offer_id )
+			);
+
+			return;
+		}
+
+		$offer_status = (string) ( $offers[ $offer_id ]['status'] ?? '' );
+
+		if ( $this->is_non_active_status( $offer_status ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_inactive_delivery_offer',
+				__( 'Rate card inactive delivery offer', 'cetech-woocommerce-delivery-engine' ),
+				__( 'A rate card references a delivery offer that is not active.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'delivery_offer_id=%d status=%s', $offer_id, $offer_status )
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 * @param array<int, array<string, mixed>> $zones
+	 * @param array<string, mixed> $card
+	 */
+	private function check_rate_card_destination_zone( array &$diagnostics, array $card, array $zones ): void {
+		$card_id = (int) ( $card['id'] ?? 0 );
+		$zone_id = (int) ( $card['destination_zone_id'] ?? 0 );
+
+		if ( $zone_id <= 0 || ! isset( $zones[ $zone_id ] ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				'rate_card_missing_destination_zone',
+				__( 'Rate card missing destination zone', 'cetech-woocommerce-delivery-engine' ),
+				__( 'A rate card references a destination zone that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'destination_zone_id=%d', $zone_id )
+			);
+
+			return;
+		}
+
+		$zone_status = (string) ( $zones[ $zone_id ]['status'] ?? '' );
+
+		if ( $this->is_non_active_status( $zone_status ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_inactive_destination_zone',
+				__( 'Rate card inactive destination zone', 'cetech-woocommerce-delivery-engine' ),
+				__( 'A rate card references a destination zone that is not active.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'destination_zone_id=%d status=%s', $zone_id, $zone_status )
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 * @param array<string, mixed> $card
+	 * @param array<int, array<string, mixed>> $entities
+	 */
+	private function check_rate_card_optional_fk(
+		array &$diagnostics,
+		array $card,
+		string $field,
+		string $entity_type,
+		array $entities,
+		string $missing_code,
+		string $inactive_code
+	): void {
+		$card_id = (int) ( $card['id'] ?? 0 );
+		$fk_id   = isset( $card[ $field ] ) ? (int) $card[ $field ] : 0;
+
+		if ( $fk_id <= 0 ) {
+			return;
+		}
+
+		if ( ! isset( $entities[ $fk_id ] ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Error,
+				$missing_code,
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'Rate card missing %s', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'A rate card references a %s that does not exist.', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				'rate_card',
+				$card_id,
+				sprintf( '%s=%d', $field, $fk_id )
+			);
+
+			return;
+		}
+
+		$entity_status = (string) ( $entities[ $fk_id ]['status'] ?? '' );
+
+		if ( $this->is_non_active_status( $entity_status ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				$inactive_code,
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'Rate card inactive %s', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				sprintf(
+					/* translators: %s: related entity type label */
+					__( 'A rate card references a %s that is not active.', 'cetech-woocommerce-delivery-engine' ),
+					str_replace( '_', ' ', $entity_type )
+				),
+				'rate_card',
+				$card_id,
+				sprintf( '%s=%d status=%s', $field, $fk_id, $entity_status )
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 * @param array<string, mixed> $card
+	 */
+	private function check_active_rate_card_values( array &$diagnostics, array $card, string $now ): void {
+		$card_id = (int) ( $card['id'] ?? 0 );
+
+		$from = isset( $card['effective_from'] ) ? trim( (string) $card['effective_from'] ) : '';
+		$to   = isset( $card['effective_to'] ) ? trim( (string) $card['effective_to'] ) : '';
+
+		if ( '' !== $from && $now < $from ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_effective_from_future',
+				__( 'Rate card not yet effective', 'cetech-woocommerce-delivery-engine' ),
+				__( 'An active rate card has an effective from date in the future.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'effective_from=%s', $from )
+			);
+		}
+
+		if ( '' !== $to && $now > $to ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_effective_to_expired',
+				__( 'Rate card expired', 'cetech-woocommerce-delivery-engine' ),
+				__( 'An active rate card has an effective to date in the past.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'effective_to=%s', $to )
+			);
+		}
+
+		$base_amount = $card['base_amount'] ?? null;
+
+		if ( ! is_numeric( $base_amount ) || (float) $base_amount < 0 ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_invalid_base_amount',
+				__( 'Rate card invalid base amount', 'cetech-woocommerce-delivery-engine' ),
+				__( 'An active rate card has a missing, non-numeric, or negative base amount.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				$this->entity_code_detail( $card, 'internal_code' )
+			);
+		}
+
+		$charge_type = (string) ( $card['charge_type'] ?? '' );
+
+		if ( ! $this->is_valid_charge_type( $charge_type ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_unsupported_charge_type',
+				__( 'Rate card unsupported charge type', 'cetech-woocommerce-delivery-engine' ),
+				__( 'An active rate card uses a charge type that is not supported in the current admin preview.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'charge_type=%s', $charge_type )
+			);
+		}
+
+		$currency = strtoupper( trim( (string) ( $card['base_currency'] ?? '' ) ) );
+
+		if ( ! preg_match( '/^[A-Z]{3}$/', $currency ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'rate_card_invalid_currency',
+				__( 'Rate card invalid currency', 'cetech-woocommerce-delivery-engine' ),
+				__( 'An active rate card has an invalid base currency code.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card',
+				$card_id,
+				sprintf( 'base_currency=%s', $currency )
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_privacy( array &$diagnostics ): void {
+		if ( $this->plugin_registers_public_rest_routes() ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'public_rest_route_detected',
+				__( 'Public REST route detected', 'cetech-woocommerce-delivery-engine' ),
+				__( 'The plugin codebase contains register_rest_route usage. Verify no private configuration is exposed.', 'cetech-woocommerce-delivery-engine' ),
+				'privacy'
+			);
+		} else {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Info,
+				'no_public_rest_routes_in_src',
+				__( 'No public REST routes in plugin source', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Static inspection found no register_rest_route calls under src/.', 'cetech-woocommerce-delivery-engine' ),
+				'privacy'
+			);
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function add(
+		array &$diagnostics,
+		DiagnosticSeverity $severity,
+		string $code,
+		string $title,
+		string $message,
+		?string $entity_type = null,
+		?int $entity_id = null,
+		?string $details = null
+	): void {
+		$diagnostics[] = new ConfigurationDiagnostic(
+			$severity,
+			$code,
+			$title,
+			$message,
+			$entity_type,
+			$entity_id,
+			$details
+		);
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 *
+	 * @return array{error: int, warning: int, info: int}
+	 */
+	private function summarize( array $diagnostics ): array {
+		$summary = [
+			'error'   => 0,
+			'warning' => 0,
+			'info'    => 0,
+		];
+
+		foreach ( $diagnostics as $diagnostic ) {
+			match ( $diagnostic->severity ) {
+				DiagnosticSeverity::Error => ++$summary['error'],
+				DiagnosticSeverity::Warning => ++$summary['warning'],
+				DiagnosticSeverity::Info => ++$summary['info'],
+				DiagnosticSeverity::Ok => null,
+			};
+		}
+
+		return $summary;
+	}
+
+	/**
+	 * @param list<array<string, mixed>> $rows
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function index_by_id( array $rows ): array {
+		$indexed = [];
+
+		foreach ( $rows as $row ) {
+			$id = (int) ( $row['id'] ?? 0 );
+
+			if ( $id > 0 ) {
+				$indexed[ $id ] = $row;
+			}
+		}
+
+		return $indexed;
+	}
+
+	/**
+	 * @param array<string, mixed> $row
+	 */
+	private function entity_code_detail( array $row, string $field ): string {
+		$code = trim( (string) ( $row[ $field ] ?? '' ) );
+
+		return '' !== $code ? sprintf( 'code=%s', $code ) : '';
+	}
+
+	private function is_non_active_status( string $status ): bool {
+		return RecordStatus::Active->value !== $status;
+	}
+
+	private function is_valid_rule_type( string $rule_type ): bool {
+		foreach ( DestinationRuleType::cases() as $case ) {
+			if ( $case->value === $rule_type ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function is_valid_match_mode( string $match_mode ): bool {
+		foreach ( DestinationRuleMatchMode::cases() as $case ) {
+			if ( $case->value === $match_mode ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function is_valid_charge_type( string $charge_type ): bool {
+		foreach ( RateCardChargeType::cases() as $case ) {
+			if ( $case->value === $charge_type ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function is_empty_public_address( mixed $stored ): bool {
+		if ( null === $stored || '' === $stored ) {
+			return true;
+		}
+
+		$string = trim( (string) $stored );
+
+		if ( '' === $string ) {
+			return true;
+		}
+
+		$decoded = json_decode( $string, true );
+
+		if ( ! is_array( $decoded ) ) {
+			return false;
+		}
+
+		$parts = [
+			(string) ( $decoded['line1'] ?? '' ),
+			(string) ( $decoded['line2'] ?? '' ),
+			(string) ( $decoded['city'] ?? '' ),
+			(string) ( $decoded['region'] ?? '' ),
+			(string) ( $decoded['country_code'] ?? '' ),
+			(string) ( $decoded['postcode'] ?? '' ),
+		];
+
+		return '' === implode( '', array_map( 'trim', $parts ) );
+	}
+
+	private function is_valid_internal_address_json( mixed $stored ): bool {
+		if ( null === $stored || '' === $stored ) {
+			return true;
+		}
+
+		$string = trim( (string) $stored );
+
+		if ( '' === $string ) {
+			return true;
+		}
+
+		$decoded = json_decode( $string, true );
+
+		return is_array( $decoded );
+	}
+
+	/**
+	 * @param array<string, mixed> $card
+	 */
+	private function rate_card_match_signature( array $card ): string {
+		return implode(
+			'|',
+			[
+				(string) ( $card['delivery_offer_id'] ?? 0 ),
+				(string) ( $card['destination_zone_id'] ?? 0 ),
+				$this->nullable_signature_part( $card['logistics_profile_id'] ?? null ),
+				$this->nullable_signature_part( $card['supplier_id'] ?? null ),
+				$this->nullable_signature_part( $card['origin_id'] ?? null ),
+				strtoupper( trim( (string) ( $card['base_currency'] ?? '' ) ) ),
+				(string) ( $card['priority'] ?? 0 ),
+			]
+		);
+	}
+
+	private function nullable_signature_part( mixed $value ): string {
+		if ( null === $value || '' === $value ) {
+			return '*';
+		}
+
+		$int = (int) $value;
+
+		return $int > 0 ? (string) $int : '*';
+	}
+
+	private function plugin_registers_public_rest_routes(): bool {
+		if ( ! defined( 'CETECH_DE_PATH' ) ) {
+			return false;
+		}
+
+		$src_path = CETECH_DE_PATH . 'src';
+
+		if ( ! is_dir( $src_path ) ) {
+			return false;
+		}
+
+		$iterator = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator( $src_path, \FilesystemIterator::SKIP_DOTS )
+		);
+
+		foreach ( $iterator as $file ) {
+			if ( ! $file instanceof \SplFileInfo || 'php' !== $file->getExtension() ) {
+				continue;
+			}
+
+			$contents = file_get_contents( $file->getPathname() );
+
+			if ( false !== $contents && str_contains( $contents, 'register_rest_route' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}

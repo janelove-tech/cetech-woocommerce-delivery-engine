@@ -35,9 +35,7 @@ final class PickupLocationsPage {
 	}
 
 	public function render(): void {
-		if ( ! current_user_can( 'manage_delivery_zones' ) ) {
-			wp_die( esc_html__( 'You do not have permission to access this page.', 'cetech-woocommerce-delivery-engine' ) );
-		}
+		AdminPageAccess::require_capability( 'manage_delivery_zones' );
 
 		$this->action_handler->notices()->render_notices();
 

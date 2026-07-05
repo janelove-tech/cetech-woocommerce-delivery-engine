@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CetechDeliveryEngine\Bootstrap;
 
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
+use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
@@ -285,6 +286,20 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			ConfigurationHealthChecker::class,
+			static fn ( ServiceContainer $container ): ConfigurationHealthChecker => new ConfigurationHealthChecker(
+				$container->get( LogisticsProfileRepositoryInterface::class ),
+				$container->get( DeliveryOfferRepositoryInterface::class ),
+				$container->get( DestinationZoneRepositoryInterface::class ),
+				$container->get( DestinationRuleRepositoryInterface::class ),
+				$container->get( PickupLocationRepositoryInterface::class ),
+				$container->get( SupplierRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( RateCardRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
 			LogisticsProfilesPage::class,
 			static fn ( ServiceContainer $container ): LogisticsProfilesPage => new LogisticsProfilesPage(
 				$container->get( LogisticsProfileRepositoryInterface::class ),
@@ -369,7 +384,8 @@ final class Plugin {
 				$container->get( PickupLocationRepositoryInterface::class ),
 				$container->get( SupplierRepositoryInterface::class ),
 				$container->get( OriginRepositoryInterface::class ),
-				$container->get( RateCardRepositoryInterface::class )
+				$container->get( RateCardRepositoryInterface::class ),
+				$container->get( ConfigurationHealthChecker::class )
 			)
 		);
 

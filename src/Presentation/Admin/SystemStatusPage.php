@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Presentation\Admin;
 
+use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
+use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
@@ -42,7 +44,8 @@ final class SystemStatusPage {
 		private PickupLocationRepositoryInterface $pickup_location_repository,
 		private SupplierRepositoryInterface $supplier_repository,
 		private OriginRepositoryInterface $origin_repository,
-		private RateCardRepositoryInterface $rate_card_repository
+		private RateCardRepositoryInterface $rate_card_repository,
+		private ConfigurationHealthChecker $configuration_health_checker
 	) {
 	}
 
@@ -78,9 +81,7 @@ final class SystemStatusPage {
 	}
 
 	public function render(): void {
-		if ( ! current_user_can( 'manage_delivery_settings' ) ) {
-			wp_die( esc_html__( 'You do not have permission to access this page.', 'cetech-woocommerce-delivery-engine' ) );
-		}
+		AdminPageAccess::require_capability( 'manage_delivery_settings' );
 
 		$this->render_admin_notices();
 
@@ -89,6 +90,7 @@ final class SystemStatusPage {
 
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Delivery Engine — System Status', 'cetech-woocommerce-delivery-engine' ) . '</h1>';
+		$this->render_admin_ui_styles();
 		echo '<p>' . esc_html__( 'Read-only system status and configuration health summary.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
 
 		$this->render_configuration_warnings();
@@ -126,6 +128,8 @@ final class SystemStatusPage {
 			]
 		);
 
+		$this->render_configuration_health();
+
 		$flag_rows = [];
 
 		foreach ( $this->feature_flags->all() as $flag => $enabled ) {
@@ -158,6 +162,89 @@ final class SystemStatusPage {
 	/**
 	 * @param array<string, string> $rows
 	 */
+	private function render_admin_ui_styles(): void {
+		echo '<style>
+			.cetech-de-severity-error { color: #b32d2e; font-weight: 600; }
+			.cetech-de-severity-warning { color: #996800; font-weight: 600; }
+			.cetech-de-severity-info { color: #2271b1; font-weight: 600; }
+			.cetech-de-severity-ok { color: #007017; font-weight: 600; }
+			.cetech-de-status-active { color: #007017; font-weight: 600; }
+			.cetech-de-status-inactive { color: #646970; }
+		</style>';
+	}
+
+	private function render_configuration_health(): void {
+		$result     = $this->configuration_health_checker->run();
+		$summary    = $result['summary'];
+		$diagnostics = $result['diagnostics'];
+
+		echo '<h2>' . esc_html__( 'Configuration Health', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<p class="description">' . esc_html__(
+			'Read-only diagnostics for configuration records. Does not modify data or expose customer information.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+
+		$this->render_table(
+			__( 'Diagnostics summary', 'cetech-woocommerce-delivery-engine' ),
+			[
+				__( 'Errors', 'cetech-woocommerce-delivery-engine' )   => (string) ( $summary['error'] ?? 0 ),
+				__( 'Warnings', 'cetech-woocommerce-delivery-engine' ) => (string) ( $summary['warning'] ?? 0 ),
+				__( 'Info', 'cetech-woocommerce-delivery-engine' )     => (string) ( $summary['info'] ?? 0 ),
+			]
+		);
+
+		if ( 0 === ( $summary['error'] ?? 0 ) && 0 === ( $summary['warning'] ?? 0 ) ) {
+			echo '<div class="notice notice-success inline"><p>';
+			echo esc_html__( 'No critical configuration issues found.', 'cetech-woocommerce-delivery-engine' );
+			echo '</p></div>';
+		}
+
+		echo '<table class="widefat striped" style="max-width:960px;">';
+		echo '<thead><tr>';
+		echo '<th scope="col">' . esc_html__( 'Severity', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+		echo '<th scope="col">' . esc_html__( 'Title', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+		echo '<th scope="col">' . esc_html__( 'Message', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+		echo '<th scope="col">' . esc_html__( 'Related entity', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+		echo '</tr></thead><tbody>';
+
+		if ( [] === $diagnostics ) {
+			echo '<tr><td colspan="4">' . esc_html__( 'No diagnostics to display.', 'cetech-woocommerce-delivery-engine' ) . '</td></tr>';
+		} else {
+			foreach ( $diagnostics as $diagnostic ) {
+				if ( ! $diagnostic instanceof ConfigurationDiagnostic ) {
+					continue;
+				}
+
+				echo '<tr>';
+				echo '<td>' . wp_kses_post( AdminUiHelper::diagnostic_severity_badge( $diagnostic->severity ) ) . '</td>';
+				echo '<td>' . esc_html( $diagnostic->title ) . '</td>';
+				echo '<td>' . esc_html( $diagnostic->message ) . '</td>';
+				echo '<td>' . esc_html( $this->format_related_entity( $diagnostic ) ) . '</td>';
+				echo '</tr>';
+			}
+		}
+
+		echo '</tbody></table>';
+	}
+
+	private function format_related_entity( ConfigurationDiagnostic $diagnostic ): string {
+		if ( null === $diagnostic->entity_type ) {
+			return '—';
+		}
+
+		$parts = [ $diagnostic->entity_type ];
+
+		if ( null !== $diagnostic->entity_id && $diagnostic->entity_id > 0 ) {
+			$parts[] = 'ID ' . (string) $diagnostic->entity_id;
+		}
+
+		if ( null !== $diagnostic->details && '' !== trim( $diagnostic->details ) ) {
+			$parts[] = $diagnostic->details;
+		}
+
+		return implode( ' · ', $parts );
+	}
+
 	private function render_table( string $title, array $rows ): void {
 		echo '<h2>' . esc_html( $title ) . '</h2>';
 		echo '<table class="widefat striped" style="max-width:960px;">';
