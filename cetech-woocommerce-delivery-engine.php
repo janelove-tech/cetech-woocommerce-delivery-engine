@@ -42,7 +42,7 @@ if ( is_readable( $autoload ) ) {
 			printf(
 				'<div class="notice notice-error"><p>%s</p></div>',
 				esc_html__(
-					'CETECH WooCommerce Delivery Engine is missing its Composer autoloader. Run composer install in the plugin directory.',
+					'CETECH WooCommerce Delivery Engine is missing its Composer autoloader. Run composer install before activating, or package the plugin with vendor/ for deployment.',
 					'cetech-woocommerce-delivery-engine'
 				)
 			);

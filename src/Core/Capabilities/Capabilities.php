@@ -46,4 +46,25 @@ final class Capabilities {
 			}
 		}
 	}
+
+	/**
+	 * Re-applies capabilities to default roles (admin sync tool).
+	 */
+	public function sync(): void {
+		$this->register();
+	}
+
+	public function unregister(): void {
+		foreach ( self::ROLES as $role_slug ) {
+			$role = get_role( $role_slug );
+
+			if ( null === $role ) {
+				continue;
+			}
+
+			foreach ( self::ALL as $capability ) {
+				$role->remove_cap( $capability );
+			}
+		}
+	}
 }

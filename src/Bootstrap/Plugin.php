@@ -9,12 +9,15 @@ use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
 use CetechDeliveryEngine\Core\Health\HealthCheckRegistry;
 use CetechDeliveryEngine\Core\Requirements;
+use CetechDeliveryEngine\Core\Versioning\MigrationRunner;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
+use CetechDeliveryEngine\Presentation\Admin\AdminMenu;
+use CetechDeliveryEngine\Presentation\Admin\SystemStatusPage;
 use CetechDeliveryEngine\Support\AdminNotice;
 use CetechDeliveryEngine\Support\Logger;
 
 /**
- * Main plugin bootstrap. Phase 1A: admin notices and core services only.
+ * Main plugin bootstrap.
  */
 final class Plugin {
 
@@ -65,6 +68,14 @@ final class Plugin {
 		$this->register_services();
 		$this->container->get( AdminNoticeManager::class )->boot();
 
+		/** @var MigrationRunner $migration_runner */
+		$migration_runner = $this->container->get( MigrationRunner::class );
+		$migration_runner->run();
+
+		if ( is_admin() ) {
+			$this->container->get( AdminMenu::class )->register();
+		}
+
 		if ( ! $requirements->is_woocommerce_active() ) {
 			$this->container->get( AdminNoticeManager::class )->register(
 				new AdminNotice(
@@ -110,6 +121,16 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			Requirements::class,
+			static fn (): Requirements => new Requirements()
+		);
+
+		$this->container->singleton(
+			Capabilities::class,
+			static fn (): Capabilities => new Capabilities()
+		);
+
+		$this->container->singleton(
 			IntegrationRegistry::class,
 			static fn ( ServiceContainer $container ): IntegrationRegistry => new IntegrationRegistry(
 				$container->get( Logger::class )
@@ -117,17 +138,39 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
+			MigrationRunner::class,
+			static function ( ServiceContainer $container ): MigrationRunner {
+				$runner = new MigrationRunner( $container->get( Logger::class ) );
+				$runner->set_migrations( [] );
+
+				return $runner;
+			}
+		);
+
+		$this->container->singleton(
 			HealthCheckRegistry::class,
 			static fn ( ServiceContainer $container ): HealthCheckRegistry => new HealthCheckRegistry(
-				new Requirements(),
+				$container->get( Requirements::class ),
 				$container->get( FeatureFlags::class ),
 				$container->get( IntegrationRegistry::class )
 			)
 		);
 
 		$this->container->singleton(
-			Capabilities::class,
-			static fn (): Capabilities => new Capabilities()
+			SystemStatusPage::class,
+			static fn ( ServiceContainer $container ): SystemStatusPage => new SystemStatusPage(
+				$container->get( Requirements::class ),
+				$container->get( FeatureFlags::class ),
+				$container->get( IntegrationRegistry::class ),
+				$container->get( Capabilities::class )
+			)
+		);
+
+		$this->container->singleton(
+			AdminMenu::class,
+			static fn ( ServiceContainer $container ): AdminMenu => new AdminMenu(
+				$container->get( SystemStatusPage::class )
+			)
 		);
 	}
 
