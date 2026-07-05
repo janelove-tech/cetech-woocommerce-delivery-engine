@@ -44,7 +44,7 @@ final class AdminPageRenderer {
 			foreach ( $rows as $row ) {
 				echo '<tr>';
 				foreach ( $row as $cell ) {
-					echo '<td>' . wp_kses_post( $cell ) . '</td>';
+					echo '<td>' . self::table_cell_html( $cell ) . '</td>';
 				}
 				echo '</tr>';
 			}
@@ -85,5 +85,51 @@ final class AdminPageRenderer {
 
 	public static function list_url( string $page_slug ): string {
 		return add_query_arg( 'page', $page_slug, admin_url( 'admin.php' ) );
+	}
+
+	/**
+	 * Sanitize admin table cell HTML while preserving inline action forms.
+	 */
+	private static function table_cell_html( string $cell ): string {
+		return wp_kses(
+			$cell,
+			[
+				'a'      => [
+					'href'       => true,
+					'class'      => true,
+					'title'      => true,
+					'aria-label' => true,
+					'target'     => true,
+					'rel'        => true,
+				],
+				'form'   => [
+					'method'   => true,
+					'action'   => true,
+					'style'    => true,
+					'class'    => true,
+					'onsubmit' => true,
+				],
+				'input'  => [
+					'type'  => true,
+					'name'  => true,
+					'value' => true,
+					'id'    => true,
+					'class' => true,
+				],
+				'button' => [
+					'type'    => true,
+					'class'   => true,
+					'name'    => true,
+					'value'   => true,
+					'onclick' => true,
+				],
+				'span'   => [
+					'class' => true,
+				],
+				'strong' => [],
+				'em'     => [],
+				'br'     => [],
+			]
+		);
 	}
 }
