@@ -902,6 +902,21 @@ final class ConfigurationHealthChecker {
 				continue;
 			}
 
+			$parts = explode( '|', $signature, 4 );
+
+			if ( count( $parts ) >= 3 ) {
+				$duplicate_signature = sprintf( '%s|%s|%s', $parts[0], $parts[1], $parts[2] );
+				$duplicate_ids       = $active_signatures[ $duplicate_signature ] ?? [];
+
+				if (
+					count( $duplicate_ids ) >= 2
+					&& count( $duplicate_ids ) === count( $rule_ids )
+					&& [] === array_diff( $rule_ids, $duplicate_ids )
+				) {
+					continue;
+				}
+			}
+
 			$this->add(
 				$diagnostics,
 				DiagnosticSeverity::Warning,
@@ -1082,7 +1097,9 @@ final class ConfigurationHealthChecker {
 			return false;
 		}
 
-		return [] === $this->decode_product_rule_offer_ids( $stored );
+		json_decode( (string) $stored, true );
+
+		return JSON_ERROR_NONE !== json_last_error();
 	}
 
 	private function is_valid_fulfilment_availability( string $availability ): bool {

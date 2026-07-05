@@ -63,6 +63,7 @@ final class ProductDeliveryRuleResolver {
 
 		$hierarchy     = $this->build_candidate_hierarchy( $target_type, $target_id );
 		$specificity_map = $this->specificity_map_from_hierarchy( $hierarchy );
+		$hierarchy_explanation = $this->build_hierarchy_explanation( $target_type, $hierarchy );
 		$raw_rules       = $this->rule_repository->findActiveByTargets(
 			array_map(
 				static fn ( array $entry ): array => [
@@ -88,6 +89,7 @@ final class ProductDeliveryRuleResolver {
 				$skipped_rules[] = [
 					'rule_id' => $rule_id,
 					'reason'  => __( 'Rule is not active.', 'cetech-woocommerce-delivery-engine' ),
+					'code'    => 'inactive',
 				];
 				continue;
 			}
@@ -96,6 +98,7 @@ final class ProductDeliveryRuleResolver {
 				$skipped_rules[] = [
 					'rule_id' => $rule_id,
 					'reason'  => __( 'Rule target does not exist in WooCommerce.', 'cetech-woocommerce-delivery-engine' ),
+					'code'    => 'missing_target',
 				];
 				continue;
 			}
@@ -122,6 +125,7 @@ final class ProductDeliveryRuleResolver {
 		}
 
 		$chosen_rules = [];
+		$chosen_explanations = [];
 		$by_availability = [];
 
 		foreach ( $eligible as $candidate ) {
@@ -161,6 +165,7 @@ final class ProductDeliveryRuleResolver {
 
 			$winner = $pool[0];
 			$chosen_rules[ $availability ] = $winner['resolved'];
+			$chosen_explanations[ $availability ] = $this->build_chosen_explanation( $winner, $pool );
 
 			for ( $index = 1, $count = count( $pool ); $index < $count; ++$index ) {
 				$loser   = $pool[ $index ];
@@ -168,12 +173,8 @@ final class ProductDeliveryRuleResolver {
 
 				$skipped_rules[] = [
 					'rule_id' => $rule_id,
-					'reason'  => sprintf(
-						/* translators: 1: winning rule ID, 2: fulfilment availability */
-						__( 'Superseded by rule #%1$d for %2$s (target specificity, priority, or ID tie-break).', 'cetech-woocommerce-delivery-engine' ),
-						(int) ( $winner['row']['id'] ?? 0 ),
-						$availability
-					),
+					'reason'  => $this->build_superseded_reason( $winner, $loser, $availability ),
+					'code'    => 'superseded',
 				];
 			}
 
@@ -210,12 +211,135 @@ final class ProductDeliveryRuleResolver {
 			$target_id,
 			$this->target_resolver->resolve_label( $target_type, $target_id ),
 			$hierarchy,
+			$hierarchy_explanation,
 			$matched_safe,
 			$chosen_rules,
+			$chosen_explanations,
 			$skipped_rules,
 			$warnings,
 			$no_match
 		);
+	}
+
+	/**
+	 * @param list<array{target_type: string, target_id: int, label: string|null, order: int}> $hierarchy
+	 */
+	private function build_hierarchy_explanation( string $input_target_type, array $hierarchy ): string {
+		if ( [] === $hierarchy ) {
+			return __( 'No candidate targets were resolved.', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( ProductTargetType::Category->value === $input_target_type ) {
+			return __(
+				'Category input searches category rules for the selected term only.',
+				'cetech-woocommerce-delivery-engine'
+			);
+		}
+
+		if ( ProductTargetType::Variation->value === $input_target_type ) {
+			return __(
+				'Variation input searches variation rules first, then parent product rules, then parent product category rules in term ID order.',
+				'cetech-woocommerce-delivery-engine'
+			);
+		}
+
+		return __(
+			'Product input searches product rules first, then product category rules in term ID order.',
+			'cetech-woocommerce-delivery-engine'
+		);
+	}
+
+	/**
+	 * @param array{row: array<string, mixed>, specificity: int, resolved: ResolvedProductDeliveryRule} $winner
+	 * @param list<array{row: array<string, mixed>, specificity: int, resolved: ResolvedProductDeliveryRule}> $pool
+	 */
+	private function build_chosen_explanation( array $winner, array $pool ): string {
+		$winner_id   = (int) ( $winner['row']['id'] ?? 0 );
+		$specificity = (int) ( $winner['specificity'] ?? 0 );
+		$priority    = (int) ( $winner['row']['priority'] ?? 100 );
+		$parts       = [
+			sprintf(
+				/* translators: 1: rule ID, 2: specificity label */
+				__( 'Rule #%1$d selected with %2$s target specificity.', 'cetech-woocommerce-delivery-engine' ),
+				$winner_id,
+				$this->specificity_label( $specificity )
+			),
+			sprintf(
+				/* translators: %d: priority number */
+				__( 'Priority %d (lower wins).', 'cetech-woocommerce-delivery-engine' ),
+				$priority
+			),
+		];
+
+		if ( count( $pool ) > 1 ) {
+			$same_spec_prio = array_filter(
+				$pool,
+				static fn ( array $item ): bool => (int) ( $item['specificity'] ?? 0 ) === $specificity
+					&& (int) ( $item['row']['priority'] ?? 100 ) === $priority
+			);
+
+			if ( count( $same_spec_prio ) > 1 ) {
+				$parts[] = sprintf(
+					/* translators: %d: rule ID */
+					__( 'Rule ID %d used as stable tie-breaker.', 'cetech-woocommerce-delivery-engine' ),
+					$winner_id
+				);
+			}
+		}
+
+		return implode( ' ', $parts );
+	}
+
+	/**
+	 * @param array{row: array<string, mixed>, specificity: int, resolved: ResolvedProductDeliveryRule} $winner
+	 * @param array{row: array<string, mixed>, specificity: int, resolved: ResolvedProductDeliveryRule} $loser
+	 */
+	private function build_superseded_reason( array $winner, array $loser, string $availability ): string {
+		$winner_id      = (int) ( $winner['row']['id'] ?? 0 );
+		$loser_id       = (int) ( $loser['row']['id'] ?? 0 );
+		$winner_spec    = (int) ( $winner['specificity'] ?? 0 );
+		$loser_spec     = (int) ( $loser['specificity'] ?? 0 );
+		$winner_prio    = (int) ( $winner['row']['priority'] ?? 100 );
+		$loser_prio     = (int) ( $loser['row']['priority'] ?? 100 );
+
+		if ( $winner_spec > $loser_spec ) {
+			return sprintf(
+				/* translators: 1: winning rule ID, 2: availability, 3: winner specificity, 4: loser specificity */
+				__( 'Superseded by rule #%1$d for %2$s: higher target specificity (%3$s vs %4$s).', 'cetech-woocommerce-delivery-engine' ),
+				$winner_id,
+				$availability,
+				$this->specificity_label( $winner_spec ),
+				$this->specificity_label( $loser_spec )
+			);
+		}
+
+		if ( $winner_prio < $loser_prio ) {
+			return sprintf(
+				/* translators: 1: winning rule ID, 2: availability, 3: winner priority, 4: loser priority */
+				__( 'Superseded by rule #%1$d for %2$s: lower priority (%3$d vs %4$d).', 'cetech-woocommerce-delivery-engine' ),
+				$winner_id,
+				$availability,
+				$winner_prio,
+				$loser_prio
+			);
+		}
+
+		return sprintf(
+			/* translators: 1: winning rule ID, 2: availability, 3: winning rule ID used as tie-break */
+			__( 'Superseded by rule #%1$d for %2$s: same specificity and priority; rule ID %3$d wins tie-break.', 'cetech-woocommerce-delivery-engine' ),
+			$winner_id,
+			$availability,
+			$winner_id
+		);
+	}
+
+	private function specificity_label( int $specificity ): string {
+		return match ( $specificity ) {
+			3 => __( 'variation', 'cetech-woocommerce-delivery-engine' ),
+			2 => __( 'product', 'cetech-woocommerce-delivery-engine' ),
+			1 => __( 'category', 'cetech-woocommerce-delivery-engine' ),
+			default => __( 'unknown', 'cetech-woocommerce-delivery-engine' ),
+		};
 	}
 
 	/**

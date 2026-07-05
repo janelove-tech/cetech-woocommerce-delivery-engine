@@ -160,8 +160,13 @@ final class ProductDeliveryRulesPage {
 		submit_button( __( 'Run resolution test', 'cetech-woocommerce-delivery-engine' ), 'secondary', 'submit', false );
 		echo '</form>';
 
-		if ( is_array( $draft ) && isset( $draft['resolution_result'] ) && $draft['resolution_result'] instanceof ProductRuleResolutionResult ) {
-			$this->render_resolution_result( $draft['resolution_result'], $lookups );
+		if ( is_array( $draft ) && isset( $draft['resolution_result'] ) && is_array( $draft['resolution_result'] ) ) {
+			$this->render_resolution_result( ProductRuleResolutionResult::fromArray( $draft['resolution_result'] ), $lookups );
+		} elseif ( is_array( $draft ) && ! empty( $draft['resolution_error'] ) ) {
+			echo '<h3>' . esc_html__( 'Resolution result', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
+			echo '<p><strong>' . esc_html__( 'Error:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) $draft['resolution_error'] );
+			echo '</p>';
 		}
 	}
 
@@ -183,6 +188,14 @@ final class ProductDeliveryRulesPage {
 			return;
 		}
 
+		echo '<p class="description">' . esc_html(
+			sprintf(
+				/* translators: %s: resolver contract version */
+				__( 'Contract version: %s (admin test only; not used on storefront).', 'cetech-woocommerce-delivery-engine' ),
+				$result->contract_version
+			)
+		) . '</p>';
+
 		echo '<p><strong>' . esc_html__( 'Input target:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
 		echo esc_html( $result->input_target_type . ' #' . (string) $result->input_target_id );
 		if ( null !== $result->input_target_label && '' !== $result->input_target_label ) {
@@ -190,8 +203,14 @@ final class ProductDeliveryRulesPage {
 		}
 		echo '</p>';
 
+		if ( '' !== $result->hierarchy_explanation ) {
+			echo '<p><strong>' . esc_html__( 'Hierarchy policy:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( $result->hierarchy_explanation );
+			echo '</p>';
+		}
+
 		if ( [] !== $result->candidate_hierarchy ) {
-			echo '<p><strong>' . esc_html__( 'Candidate hierarchy:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p>';
+			echo '<p><strong>' . esc_html__( 'Candidate hierarchy (search order):', 'cetech-woocommerce-delivery-engine' ) . '</strong></p>';
 			echo '<ol>';
 			foreach ( $result->candidate_hierarchy as $entry ) {
 				$label = isset( $entry['label'] ) && is_string( $entry['label'] ) && '' !== $entry['label']
@@ -202,16 +221,24 @@ final class ProductDeliveryRulesPage {
 			echo '</ol>';
 		}
 
-		if ( null !== $result->no_match_message ) {
-			echo '<p><em>' . esc_html( $result->no_match_message ) . '</em></p>';
+		if ( null !== $result->no_match_message && '' !== $result->no_match_message ) {
+			echo '<div class="notice notice-info inline"><p><strong>' . esc_html__( 'No match:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( $result->no_match_message );
+			echo '</p></div>';
 		}
 
 		if ( [] !== $result->warnings ) {
-			echo '<p><strong>' . esc_html__( 'Warnings:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p><ul>';
+			echo '<div class="notice notice-warning inline"><p><strong>' . esc_html__( 'Warnings:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p><ul>';
 			foreach ( $result->warnings as $warning ) {
 				echo '<li>' . esc_html( $warning ) . '</li>';
 			}
-			echo '</ul>';
+			echo '</ul></div>';
+		}
+
+		if ( [] !== $result->matched_rules ) {
+			echo '<p><strong>' . esc_html__( 'Matched rules:', 'cetech-woocommerce-delivery-engine' ) . '</strong> ';
+			echo esc_html( (string) count( $result->matched_rules ) );
+			echo '</p>';
 		}
 
 		if ( [] !== $result->chosen_rules ) {
@@ -219,6 +246,7 @@ final class ProductDeliveryRulesPage {
 			echo '<table class="widefat striped" style="max-width:960px;"><thead><tr>';
 			echo '<th scope="col">' . esc_html__( 'Availability', 'cetech-woocommerce-delivery-engine' ) . '</th>';
 			echo '<th scope="col">' . esc_html__( 'Rule', 'cetech-woocommerce-delivery-engine' ) . '</th>';
+			echo '<th scope="col">' . esc_html__( 'Why chosen', 'cetech-woocommerce-delivery-engine' ) . '</th>';
 			echo '<th scope="col">' . esc_html__( 'Target', 'cetech-woocommerce-delivery-engine' ) . '</th>';
 			echo '<th scope="col">' . esc_html__( 'Choice', 'cetech-woocommerce-delivery-engine' ) . '</th>';
 			echo '<th scope="col">' . esc_html__( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ) . '</th>';
@@ -233,9 +261,12 @@ final class ProductDeliveryRulesPage {
 					continue;
 				}
 
+				$explanation = $result->chosen_explanations[ $availability ] ?? '';
+
 				echo '<tr>';
 				echo '<td>' . esc_html( $availability ) . '</td>';
 				echo '<td>' . esc_html( '#' . (string) $rule->rule_id ) . '</td>';
+				echo '<td>' . esc_html( $explanation ) . '</td>';
 				echo '<td>' . esc_html( $rule->target_type . ' #' . (string) $rule->target_id ) . '</td>';
 				echo '<td>' . esc_html( $rule->fulfilment_choice ) . '</td>';
 				echo '<td>' . esc_html( $this->format_offer_id_list( $lookups['offers'], $rule->delivery_offer_ids ) ) . '</td>';
@@ -247,17 +278,23 @@ final class ProductDeliveryRulesPage {
 			}
 
 			echo '</tbody></table>';
+		} elseif ( null === $result->no_match_message || '' === $result->no_match_message ) {
+			echo '<p><em>' . esc_html__( 'No rules were chosen for any fulfilment availability.', 'cetech-woocommerce-delivery-engine' ) . '</em></p>';
 		}
 
 		if ( [] !== $result->skipped_rules ) {
 			echo '<p><strong>' . esc_html__( 'Skipped rules:', 'cetech-woocommerce-delivery-engine' ) . '</strong></p><ul>';
 			foreach ( $result->skipped_rules as $skipped ) {
+				$code = isset( $skipped['code'] ) && is_string( $skipped['code'] ) && '' !== $skipped['code']
+					? ' [' . $skipped['code'] . ']'
+					: '';
 				echo '<li>' . esc_html(
 					sprintf(
-						/* translators: 1: rule ID, 2: skip reason */
-						__( 'Rule #%1$d: %2$s', 'cetech-woocommerce-delivery-engine' ),
+						/* translators: 1: rule ID, 2: skip reason, 3: optional skip code */
+						__( 'Rule #%1$d: %2$s%3$s', 'cetech-woocommerce-delivery-engine' ),
 						(int) ( $skipped['rule_id'] ?? 0 ),
-						(string) ( $skipped['reason'] ?? '' )
+						(string) ( $skipped['reason'] ?? '' ),
+						$code
 					)
 				) . '</li>';
 			}
@@ -286,7 +323,7 @@ final class ProductDeliveryRulesPage {
 			(int) $input['test_target_id']
 		);
 
-		$input['resolution_result'] = $result;
+		$input['resolution_result'] = $result->toArray();
 		$this->action_handler->notices()->stash_form_draft( self::SLUG . '_resolve', $input );
 		$this->action_handler->redirect( self::SLUG );
 	}

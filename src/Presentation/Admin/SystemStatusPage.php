@@ -6,6 +6,8 @@ namespace CetechDeliveryEngine\Presentation\Admin;
 
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
+use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
+use CetechDeliveryEngine\Application\ProductRule\ProductRuleResolutionResult;
 use CetechDeliveryEngine\Bootstrap\FeatureFlags;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
 use CetechDeliveryEngine\Core\FeaturesCompatibility;
@@ -128,6 +130,16 @@ final class SystemStatusPage {
 				__( 'Origins', 'cetech-woocommerce-delivery-engine' ) => (string) $this->origin_repository->count_all(),
 				__( 'Rate cards', 'cetech-woocommerce-delivery-engine' ) => (string) $this->rate_card_repository->count_all(),
 				__( 'Product delivery rules', 'cetech-woocommerce-delivery-engine' ) => (string) $this->product_rule_repository->count_all(),
+			]
+		);
+
+		$this->render_table(
+			__( 'Runtime readiness (admin/test only)', 'cetech-woocommerce-delivery-engine' ),
+			[
+				__( 'Product rule resolver registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( ProductDeliveryRuleResolver::class ) ),
+				__( 'Resolver contract version', 'cetech-woocommerce-delivery-engine' ) => ProductRuleResolutionResult::CONTRACT_VERSION,
+				__( 'Resolver storefront usage', 'cetech-woocommerce-delivery-engine' ) => __( 'None (admin test tool only)', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Resolver test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Product Rules → Test product rule resolution', 'cetech-woocommerce-delivery-engine' ),
 			]
 		);
 
