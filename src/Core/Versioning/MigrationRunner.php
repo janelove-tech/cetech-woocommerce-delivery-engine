@@ -72,6 +72,11 @@ final class MigrationRunner {
 
 		try {
 			$migration->up();
+
+			if ( $migration instanceof VerifiableMigrationInterface ) {
+				$migration->verify();
+			}
+
 			SchemaVersion::set( $to_version );
 
 			MigrationStatus::record(

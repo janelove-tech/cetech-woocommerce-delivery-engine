@@ -21,8 +21,7 @@ final class WpdbDeliveryOfferRepository extends AbstractWpdbRepository implement
 	}
 
 	public function save( array $data ): int {
-		// Phase 2B: full insert/update implementation.
-		return (int) ( $data['id'] ?? 0 );
+		$this->throw_save_not_implemented();
 	}
 
 	public function list( array $criteria = [] ): array {

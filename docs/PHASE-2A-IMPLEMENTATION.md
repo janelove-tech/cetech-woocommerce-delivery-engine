@@ -18,8 +18,8 @@ Phase 2A delivers the **configuration-domain database schema and persistence fou
 | Table helpers | `TableNames`, `ConfigurationTables` |
 | Domain enums | `FulfilmentAvailability`, `FulfilmentChoice`, `DeliveryRoute`, `CarrierVisibility`, `RateCardChargeType`, `RecordStatus` |
 | Value objects | `Money`, `CurrencyCode`, `DurationRange` |
-| Repository interfaces | 8 configuration-domain interfaces under `src/Domain/` |
-| Repository skeletons | 8 `Wpdb*` classes under `src/Infrastructure/Persistence/` |
+| Repository interfaces | 9 configuration-domain interfaces under `src/Domain/` |
+| Repository skeletons | 9 `Wpdb*` classes under `src/Infrastructure/Persistence/` |
 | Wiring | `Plugin::register_repository_bindings()`, migration discovery on boot/activation |
 | System Status | Target/installed schema version, table presence, last migration status |
 | Uninstall | Drops Phase 2A configuration tables when delete-data option is explicitly true |
@@ -50,6 +50,7 @@ All tables use the dynamic WordPress prefix: `{$wpdb->prefix}delivery_engine_*`
 - Malformed or non-conforming files are logged and skipped (no fatal error).
 - Migrations are sorted by `get_version()` and applied only when installed version is lower.
 - `up()` uses WordPress `dbDelta()` with `$wpdb->get_charset_collate()`.
+- Migrations implementing `VerifiableMigrationInterface` run `verify()` after `up()`; schema version bumps only when verification passes.
 - Successful runs update `cetech_de_db_version` and record `cetech_de_last_migration_status`.
 - Failed runs log an error and record failure status; schema version is **not** bumped.
 - No demo data, offers, zones, suppliers, or rate cards are seeded.
@@ -106,7 +107,7 @@ wp db query "SHOW TABLES LIKE '%delivery_engine_%'"
 - WooCommerce shipping packages or custom shipping method
 - Checkout validation, order snapshots, shipments
 - Admin CRUD screens (Dashboard, Offers, Zones, etc.)
-- Full repository `save()` implementations
+- Repository `save()` implementations (`save()` throws until Phase 2B; see Patch 1 below)
 - WPML/WCML/WoodMart/WCFM/VitePOS real adapters
 - Frontend JS/CSS, demo data, auto-created configuration records
 
@@ -136,9 +137,37 @@ php -l uninstall.php
 ## TODOs for Phase 2B
 
 - Admin CRUD screens for offers, zones, profiles, suppliers, origins, pickup locations, rate cards
-- Full repository `save()` / validation / audit logging on writes
+- Full repository `save()` / `DestinationRuleRepository::replaceForZone()` / audit logging on writes
 - Destination zone rule editor and zone test tool
 - Rate card “Test this rate” tool
 - Configuration health checks in diagnostics
 - Product rules table migration (separate phase per roadmap)
 - Cache invalidation hooks when configuration records change
+
+## Phase 2A Patch 1
+
+Hardening fixes applied after Phase 2A verification (no Phase 2B scope).
+
+| Fix | Change |
+|-----|--------|
+| Misleading `save()` stubs | All configuration repository `save()` methods throw `BadMethodCallException` with message *Repository save() is not implemented until Phase 2B CRUD.* No fake IDs returned. |
+| Post-migration verification | New `VerifiableMigrationInterface`; `MigrationRunner` calls `verify()` after `up()` before bumping `cetech_de_db_version`. Phase 2A migration verifies `ConfigurationTables::all_exist()`. |
+| Destination rules repository | Added `DestinationRuleRepositoryInterface`, `WpdbDestinationRuleRepository` (`listByZoneId`, `deleteByZoneId`; `replaceForZone` throws until 2B), bound in `ServiceContainer`. |
+| Audit append validation | `AuditLogRepository::append()` requires non-empty `action` and `entity_type`; IDs cast/validated; sensitive keys redacted from array payloads. |
+| Uninstall fallback drift | Autoload path uses `Uninstaller` → `ConfigurationTables`. Fallback table list in `uninstall.php` documents sync requirement with `ConfigurationTables::SUFFIXES`. |
+
+### Repository write behaviour (Patch 1)
+
+- `save()` on offer, zone, profile, supplier, origin, pickup, rate-card repositories: **throws** `BadMethodCallException`.
+- `AuditLogRepository::append()`: **functional** insert with validation.
+- `DestinationRuleRepository::listByZoneId()` / `deleteByZoneId()`: **functional** reads/deletes.
+- `DestinationRuleRepository::replaceForZone()`: **throws** until Phase 2B.
+
+### How to test Patch 1
+
+1. Activate plugin — schema should still reach `1` when all tables exist.
+2. System Status — if tables missing, installed version stays `0` and last migration status shows failure with missing suffixes.
+3. Calling any repository `save()` in a test snippet should throw (not return an ID).
+4. `append()` with empty `action` should throw `InvalidArgumentException`.
+5. `append()` with valid fields should insert a row.
+6. `listByZoneId(1)` should return an empty array when no rules exist (no fatal).

@@ -21,7 +21,7 @@ final class WpdbSupplierRepository extends AbstractWpdbRepository implements Sup
 	}
 
 	public function save( array $data ): int {
-		return (int) ( $data['id'] ?? 0 );
+		$this->throw_save_not_implemented();
 	}
 
 	public function list( array $criteria = [] ): array {

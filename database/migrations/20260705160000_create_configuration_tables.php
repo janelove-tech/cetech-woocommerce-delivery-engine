@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use CetechDeliveryEngine\Core\Versioning\MigrationInterface;
+use CetechDeliveryEngine\Core\Versioning\VerifiableMigrationInterface;
+use CetechDeliveryEngine\Infrastructure\Persistence\ConfigurationTables;
 use CetechDeliveryEngine\Infrastructure\Persistence\TableNames;
 
-return new class implements MigrationInterface {
+return new class implements VerifiableMigrationInterface {
 
 	public function get_id(): string {
 		return '20260705160000_create_configuration_tables';
@@ -32,6 +34,21 @@ return new class implements MigrationInterface {
 		$this->create_rate_cards_table( $charset_collate );
 		$this->create_rate_card_rules_table( $charset_collate );
 		$this->create_audit_log_table( $charset_collate );
+	}
+
+	public function verify(): void {
+		$missing = ConfigurationTables::missing();
+
+		if ( [] === $missing ) {
+			return;
+		}
+
+		throw new \RuntimeException(
+			sprintf(
+				'Configuration tables missing after migration: %s',
+				implode( ', ', $missing )
+			)
+		);
 	}
 
 	private function create_delivery_offers_table( string $charset_collate ): void {

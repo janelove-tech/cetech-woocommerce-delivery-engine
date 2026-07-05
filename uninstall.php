@@ -34,6 +34,7 @@ if ( is_readable( $autoload ) ) {
 }
 
 // Fallback when vendor/ is missing: remove known options and capabilities without autoload.
+// Table drops below must stay in sync with ConfigurationTables::SUFFIXES when new domain tables are added.
 $roles = [ 'administrator', 'shop_manager' ];
 
 $capabilities = [
@@ -96,6 +97,8 @@ delete_option( 'cetech_de_delete_data_on_uninstall' );
 global $wpdb;
 
 $table_prefix = $wpdb->prefix . 'delivery_engine_';
+
+// Keep this list aligned with ConfigurationTables::SUFFIXES (see src/Infrastructure/Persistence/ConfigurationTables.php).
 $table_suffixes = [
 	'delivery_offers',
 	'destination_zones',

@@ -18,9 +18,11 @@ use CetechDeliveryEngine\Domain\Pickup\PickupLocationRepositoryInterface;
 use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\OriginRepositoryInterface;
 use CetechDeliveryEngine\Domain\Supplier\SupplierRepositoryInterface;
+use CetechDeliveryEngine\Domain\Zone\DestinationRuleRepositoryInterface;
 use CetechDeliveryEngine\Domain\Zone\DestinationZoneRepositoryInterface;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbAuditLogRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDeliveryOfferRepository;
+use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDestinationRuleRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbDestinationZoneRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbLogisticsProfileRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbOriginRepository;
@@ -207,6 +209,11 @@ final class Plugin {
 		$this->container->singleton(
 			DestinationZoneRepositoryInterface::class,
 			static fn (): DestinationZoneRepositoryInterface => new WpdbDestinationZoneRepository()
+		);
+
+		$this->container->singleton(
+			DestinationRuleRepositoryInterface::class,
+			static fn (): DestinationRuleRepositoryInterface => new WpdbDestinationRuleRepository()
 		);
 
 		$this->container->singleton(

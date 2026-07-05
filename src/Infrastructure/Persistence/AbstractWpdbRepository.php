@@ -11,7 +11,13 @@ use CetechDeliveryEngine\Domain\Enum\RecordStatus;
  */
 abstract class AbstractWpdbRepository {
 
+	protected const SAVE_NOT_IMPLEMENTED_MESSAGE = 'Repository save() is not implemented until Phase 2B CRUD.';
+
 	abstract protected function table_suffix(): string;
+
+	protected function throw_save_not_implemented(): never {
+		throw new \BadMethodCallException( self::SAVE_NOT_IMPLEMENTED_MESSAGE );
+	}
 
 	protected function table_name(): string {
 		return TableNames::for( $this->table_suffix() );
