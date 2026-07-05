@@ -55,8 +55,8 @@ final class AdminMenu {
 		if ( current_user_can( 'manage_delivery_settings' ) ) {
 			add_submenu_page(
 				self::PARENT_SLUG,
-				__( 'System Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'System Status', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Dashboard', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Dashboard', 'cetech-woocommerce-delivery-engine' ),
 				'manage_delivery_settings',
 				self::SYSTEM_STATUS_SLUG,
 				[ $this->system_status_page, 'render' ]

@@ -115,9 +115,15 @@ final class SystemStatusPage {
 		$display_keys = [ 'woodmart', 'wpml', 'wcml', 'wcfm', 'vitepos' ];
 
 		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Delivery Engine — System Status', 'cetech-woocommerce-delivery-engine' ) . '</h1>';
 		$this->render_admin_ui_styles();
-		echo '<p>' . esc_html__( 'Read-only system status and configuration health summary.', 'cetech-woocommerce-delivery-engine' ) . '</p>';
+		$this->operations_dashboard()->render();
+
+		echo '<details id="cetech-de-advanced-details" class="cetech-de-advanced">';
+		echo '<summary>' . esc_html__( 'Advanced system details', 'cetech-woocommerce-delivery-engine' ) . '</summary>';
+		echo '<p class="description">' . esc_html__(
+			'Technical diagnostics for developers and advanced troubleshooting. Most day-to-day tasks can be completed from the dashboard above.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
 
 		$this->render_configuration_warnings();
 
@@ -271,7 +277,20 @@ final class SystemStatusPage {
 
 		$this->render_resync_form();
 
+		echo '</details>';
 		echo '</div>';
+	}
+
+	private function operations_dashboard(): AdminOperationsDashboard {
+		return new AdminOperationsDashboard(
+			$this->requirements,
+			$this->feature_flags,
+			$this->destination_zone_repository,
+			$this->delivery_offer_repository,
+			$this->rate_card_repository,
+			$this->configuration_health_checker,
+			new ShippingRateCalculationGate( $this->feature_flags, $this->requirements )
+		);
 	}
 
 	/**
