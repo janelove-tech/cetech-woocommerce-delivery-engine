@@ -7,7 +7,11 @@ namespace CetechDeliveryEngine\Presentation\Admin;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
+use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
+use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
+use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
+use CetechDeliveryEngine\Infrastructure\WooCommerce\Shipping\SelectedOfferShippingMethod;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationDiagnostic;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
@@ -145,8 +149,10 @@ final class SystemStatusPage {
 		$capture_enabled = $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' );
 		$selector_enabled = $this->feature_flags->is_enabled( 'enable_product_delivery_selector' );
 		$checkout_validation_enabled = $this->feature_flags->is_enabled( 'enable_checkout_delivery_selection_validation' );
+		$shipping_calculation_enabled = $this->feature_flags->is_enabled( ShippingRateCalculationGate::SHIPPING_FLAG );
 		$capture_active   = $capture_enabled && $selector_enabled;
 		$checkout_validation_active = $checkout_validation_enabled && $capture_active;
+		$shipping_runtime_active = $shipping_calculation_enabled && $checkout_validation_active;
 
 		$this->render_table(
 			__( 'Runtime readiness (admin/test only)', 'cetech-woocommerce-delivery-engine' ),
@@ -180,12 +186,21 @@ final class SystemStatusPage {
 					? __( 'Enabled when capture flag active', 'cetech-woocommerce-delivery-engine' )
 					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Rate quote engine registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( class_exists( RateQuoteEngine::class ) ),
-				__( 'Rate quote mode', 'cetech-woocommerce-delivery-engine' ) => __( 'Admin/test only; no WooCommerce shipping calculation', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Rate quote mode', 'cetech-woocommerce-delivery-engine' ) => $this->describe_rate_quote_mode( $shipping_runtime_active ),
 				__( 'Rate quote admin test location', 'cetech-woocommerce-delivery-engine' ) => __( 'Delivery Engine → Rate Cards → Test rate quote engine', 'cetech-woocommerce-delivery-engine' ),
-				__( 'WooCommerce shipping method', 'cetech-woocommerce-delivery-engine' ) => __( 'Not registered', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Cart/checkout totals', 'cetech-woocommerce-delivery-engine' ) => __( 'Not modified', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Missing rate card behavior', 'cetech-woocommerce-delivery-engine' ) => __( 'Blocks quote / no free fallback', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Shipping calculation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce selected-offer shipping flag', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $shipping_calculation_enabled ),
+				__( 'Selected-offer shipping method registered', 'cetech-woocommerce-delivery-engine' ) => $this->yes_no( $shipping_runtime_active && class_exists( SelectedOfferShippingMethod::class ) ),
+				__( 'Shipping method ID', 'cetech-woocommerce-delivery-engine' ) => SelectedOfferShippingMethod::METHOD_ID,
+				__( 'Shipping calculation mode', 'cetech-woocommerce-delivery-engine' ) => $this->describe_shipping_calculation_mode( $shipping_calculation_enabled, $shipping_runtime_active ),
+				__( 'Destination zone resolver', 'cetech-woocommerce-delivery-engine' ) => $this->describe_destination_resolver(),
+				__( 'WooCommerce shipping method', 'cetech-woocommerce-delivery-engine' ) => $this->describe_shipping_method_registration( $shipping_runtime_active ),
+				__( 'Cart/checkout totals', 'cetech-woocommerce-delivery-engine' ) => $this->describe_cart_checkout_totals( $shipping_runtime_active ),
+				__( 'Missing quote behavior', 'cetech-woocommerce-delivery-engine' ) => __( 'No rate / no free fallback', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Order snapshot', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Shipment creation', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Shipping calculation', 'cetech-woocommerce-delivery-engine' ) => $shipping_runtime_active
+					? __( 'Enabled (WooCommerce shipping rates only)', 'cetech-woocommerce-delivery-engine' )
+					: __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Order delivery persistence', 'cetech-woocommerce-delivery-engine' ) => __( 'Not enabled', 'cetech-woocommerce-delivery-engine' ),
 				__( 'Selector storefront output', 'cetech-woocommerce-delivery-engine' ) => $this->describe_selector_storefront_output( $selector_enabled, $capture_active ),
 			]
@@ -368,6 +383,50 @@ final class SystemStatusPage {
 		}
 
 		return __( 'Enabled on product pages (display-only; no cart/checkout)', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_rate_quote_mode( bool $shipping_runtime_active ): string {
+		if ( $shipping_runtime_active ) {
+			return __( 'RateQuoteEngine-backed WooCommerce shipping calculation', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Admin/test only; no WooCommerce shipping calculation', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_shipping_calculation_mode( bool $shipping_flag_enabled, bool $shipping_runtime_active ): string {
+		if ( $shipping_runtime_active ) {
+			return __( 'RateQuoteEngine-backed / enabled', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		if ( $shipping_flag_enabled ) {
+			return __( 'Disabled (upstream flags not ready)', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Disabled', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_destination_resolver(): string {
+		if ( ! class_exists( DestinationZoneMatcher::class ) || ! class_exists( PackageDestinationZoneResolver::class ) ) {
+			return __( 'Unavailable', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Package destination → active zone rules (+ explicit fallback zone when configured)', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_shipping_method_registration( bool $shipping_runtime_active ): string {
+		if ( $shipping_runtime_active ) {
+			return __( 'Registered when runtime gates active', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Not registered', 'cetech-woocommerce-delivery-engine' );
+	}
+
+	private function describe_cart_checkout_totals( bool $shipping_runtime_active ): string {
+		if ( $shipping_runtime_active ) {
+			return __( 'WooCommerce shipping rates only (no direct total hooks)', 'cetech-woocommerce-delivery-engine' );
+		}
+
+		return __( 'Not modified', 'cetech-woocommerce-delivery-engine' );
 	}
 
 	private function yes_no( bool $value ): string {

@@ -9,9 +9,9 @@ use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 use CetechDeliveryEngine\Domain\ValueObject\Money;
 
 /**
- * Server-side rate quote engine (admin/test only in this phase).
+ * Server-side rate quote engine.
  *
- * Does not register WooCommerce shipping methods or alter cart/checkout/order totals.
+ * Used by admin quote tests and guarded WooCommerce shipping calculation (Phase 2G2+).
  */
 final class RateQuoteEngine {
 

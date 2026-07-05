@@ -8,6 +8,9 @@ use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionCapture;
 use CetechDeliveryEngine\Application\Cart\CartDeliverySelectionRevalidator;
 use CetechDeliveryEngine\Application\Checkout\CheckoutDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
+use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
+use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
+use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOption;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionIntent;
@@ -77,6 +80,7 @@ final class ConfigurationHealthChecker {
 		$this->check_cart_delivery_selection_capture( $diagnostics );
 		$this->check_checkout_delivery_selection_validation( $diagnostics );
 		$this->check_rate_quote( $diagnostics );
+		$this->check_woocommerce_shipping_rate_calculation( $diagnostics );
 		$this->check_privacy( $diagnostics );
 
 		return [
@@ -1497,6 +1501,106 @@ final class ConfigurationHealthChecker {
 					$offer_id
 				);
 			}
+		}
+	}
+
+	/**
+	 * @param list<ConfigurationDiagnostic> $diagnostics
+	 */
+	private function check_woocommerce_shipping_rate_calculation( array &$diagnostics ): void {
+		if ( ! $this->feature_flags->is_enabled( ShippingRateCalculationGate::SHIPPING_FLAG ) ) {
+			return;
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_product_delivery_selector' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_enabled_selector_disabled',
+				__( 'Shipping calculation enabled without product selector', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but enable_product_delivery_selector is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_cart_delivery_selection_capture' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_enabled_cart_capture_disabled',
+				__( 'Shipping calculation enabled without cart capture', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but enable_cart_delivery_selection_capture is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! $this->feature_flags->is_enabled( 'enable_checkout_delivery_selection_validation' ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_enabled_checkout_validation_disabled',
+				__( 'Shipping calculation enabled without checkout validation', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but enable_checkout_delivery_selection_validation is disabled.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( RateQuoteEngine::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_enabled_quote_engine_missing',
+				__( 'Shipping calculation: RateQuoteEngine missing', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but RateQuoteEngine is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		if ( ! class_exists( DestinationZoneMatcher::class ) || ! class_exists( PackageDestinationZoneResolver::class ) ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_destination_resolver_unavailable',
+				__( 'Shipping calculation: destination resolver unavailable', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but the runtime destination zone resolver is not available.', 'cetech-woocommerce-delivery-engine' ),
+				'feature_flag'
+			);
+		}
+
+		$active_zones = $this->destination_zone_repository->list(
+			[
+				'status' => RecordStatus::Active->value,
+				'limit'  => 1,
+			]
+		);
+
+		if ( [] === $active_zones ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_enabled_no_active_destination_zones',
+				__( 'Shipping calculation enabled without active destination zones', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but no active destination zones exist.', 'cetech-woocommerce-delivery-engine' ),
+				'destination_zone'
+			);
+		}
+
+		$active_cards = $this->rate_card_repository->list(
+			[
+				'status' => RecordStatus::Active->value,
+				'limit'  => 1,
+			]
+		);
+
+		if ( [] === $active_cards ) {
+			$this->add(
+				$diagnostics,
+				DiagnosticSeverity::Warning,
+				'shipping_calculation_enabled_no_active_rate_cards',
+				__( 'Shipping calculation enabled without active rate cards', 'cetech-woocommerce-delivery-engine' ),
+				__( 'WooCommerce shipping rate calculation is enabled but no active rate cards exist.', 'cetech-woocommerce-delivery-engine' ),
+				'rate_card'
+			);
 		}
 	}
 

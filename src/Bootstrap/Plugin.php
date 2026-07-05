@@ -11,7 +11,12 @@ use CetechDeliveryEngine\Application\ProductRule\ProductDeliveryRuleResolver;
 use CetechDeliveryEngine\Application\Selector\ProductDeliveryOptionsBuilder;
 use CetechDeliveryEngine\Application\Selector\ProductDeliverySelectionValidator;
 use CetechDeliveryEngine\Application\Calculator\AdminRateCardTester;
+use CetechDeliveryEngine\Application\Destination\DestinationZoneMatcher;
+use CetechDeliveryEngine\Application\Destination\PackageDestinationZoneResolver;
 use CetechDeliveryEngine\Application\RateQuote\RateQuoteEngine;
+use CetechDeliveryEngine\Application\Shipping\SelectedOfferShippingIntegration;
+use CetechDeliveryEngine\Application\Shipping\SelectedOfferShippingRateCalculator;
+use CetechDeliveryEngine\Application\Shipping\ShippingRateCalculationGate;
 use CetechDeliveryEngine\Application\Diagnostics\ConfigurationHealthChecker;
 use CetechDeliveryEngine\Core\AdminNoticeManager;
 use CetechDeliveryEngine\Core\Capabilities\Capabilities;
@@ -153,6 +158,7 @@ final class Plugin {
 		$this->container->get( CartDeliverySelectionCapture::class )->register();
 		$this->container->get( CartDeliverySelectionRevalidator::class )->register();
 		$this->container->get( CheckoutDeliverySelectionValidator::class )->register();
+		$this->container->get( SelectedOfferShippingIntegration::class )->register();
 
 		$this->maybe_show_activation_notice();
 	}
@@ -289,10 +295,24 @@ final class Plugin {
 		);
 
 		$this->container->singleton(
-			DestinationZoneTestMatcher::class,
-			static fn ( ServiceContainer $container ): DestinationZoneTestMatcher => new DestinationZoneTestMatcher(
+			DestinationZoneMatcher::class,
+			static fn ( ServiceContainer $container ): DestinationZoneMatcher => new DestinationZoneMatcher(
 				$container->get( DestinationZoneRepositoryInterface::class ),
 				$container->get( DestinationRuleRepositoryInterface::class )
+			)
+		);
+
+		$this->container->singleton(
+			PackageDestinationZoneResolver::class,
+			static fn ( ServiceContainer $container ): PackageDestinationZoneResolver => new PackageDestinationZoneResolver(
+				$container->get( DestinationZoneMatcher::class )
+			)
+		);
+
+		$this->container->singleton(
+			DestinationZoneTestMatcher::class,
+			static fn ( ServiceContainer $container ): DestinationZoneTestMatcher => new DestinationZoneTestMatcher(
+				$container->get( DestinationZoneMatcher::class )
 			)
 		);
 
@@ -398,6 +418,34 @@ final class Plugin {
 				$container->get( Requirements::class ),
 				$container->get( CartDeliverySelectionCapture::class ),
 				$container->get( CartDeliverySelectionRevalidator::class )
+			)
+		);
+
+		$this->container->singleton(
+			ShippingRateCalculationGate::class,
+			static fn ( ServiceContainer $container ): ShippingRateCalculationGate => new ShippingRateCalculationGate(
+				$container->get( FeatureFlags::class ),
+				$container->get( Requirements::class )
+			)
+		);
+
+		$this->container->singleton(
+			SelectedOfferShippingRateCalculator::class,
+			static fn ( ServiceContainer $container ): SelectedOfferShippingRateCalculator => new SelectedOfferShippingRateCalculator(
+				$container->get( ShippingRateCalculationGate::class ),
+				$container->get( PackageDestinationZoneResolver::class ),
+				$container->get( CartDeliverySelectionCapture::class ),
+				$container->get( CartDeliverySelectionRevalidator::class ),
+				$container->get( RateQuoteEngine::class ),
+				$container->get( ProductDeliveryRuleRepositoryInterface::class ),
+				$container->get( Logger::class )
+			)
+		);
+
+		$this->container->singleton(
+			SelectedOfferShippingIntegration::class,
+			static fn ( ServiceContainer $container ): SelectedOfferShippingIntegration => new SelectedOfferShippingIntegration(
+				$container->get( ShippingRateCalculationGate::class )
 			)
 		);
 
