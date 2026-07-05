@@ -173,28 +173,55 @@ Write-Step 'Inspecting ZIP structure'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
-    $entries = $Archive.Entries | ForEach-Object { $_.FullName }
-    $topLevel = $entries | ForEach-Object {
-        if ($_ -match '^([^/]+)/') { $Matches[1] }
-    } | Select-Object -Unique
+    $entries = @($Archive.Entries | ForEach-Object { $_.FullName })
+    $topLevel = @(
+        $entries |
+            ForEach-Object {
+                if ($_ -match '^([^/]+)/') { $Matches[1] }
+            } |
+            Where-Object { $_ -ne '' } |
+            Select-Object -Unique
+    )
 
     if ($topLevel.Count -ne 1 -or $topLevel[0] -ne $PluginSlug) {
-        throw "Unexpected ZIP top-level folder(s): $($topLevel -join ', ')"
+        throw "Unexpected ZIP top-level folder structure. Expected single folder '$PluginSlug', found: $($topLevel -join ', ')"
     }
 
-    $zipMain = "$PluginSlug/$PluginMainFile"
+    $zipMain            = "$PluginSlug/$PluginMainFile"
+    $zipSrcPrefix       = "$PluginSlug/src/"
+    $zipDatabasePrefix  = "$PluginSlug/database/"
+    $zipVendorAutoload  = "$PluginSlug/vendor/autoload.php"
+
     if (-not ($entries -contains $zipMain)) {
-        throw "ZIP missing $zipMain"
+        throw "ZIP missing required entry: $zipMain"
+    }
+
+    if (-not ($entries | Where-Object { $_ -like "$zipSrcPrefix*" } | Select-Object -First 1)) {
+        throw "ZIP missing required entries under: $zipSrcPrefix"
+    }
+
+    if (-not ($entries | Where-Object { $_ -like "$zipDatabasePrefix*" } | Select-Object -First 1)) {
+        throw "ZIP missing required entries under: $zipDatabasePrefix"
+    }
+
+    if (-not ($entries -contains $zipVendorAutoload)) {
+        throw "ZIP missing required Composer autoload entry: $zipVendorAutoload"
     }
 
     Write-Host 'ZIP top-level folder OK:' $PluginSlug
     Write-Host 'ZIP contains root plugin file OK'
+    Write-Host 'ZIP contains src/ entries OK'
+    Write-Host 'ZIP contains database/ entries OK'
+    Write-Host 'ZIP contains vendor/autoload.php OK'
 }
 finally {
     $Archive.Dispose()
 }
 
 Write-Step 'Cleaning staging directory'
+if (-not $StageRoot.StartsWith($BuildRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to delete staging path outside build/: $StageRoot"
+}
 Remove-Item -LiteralPath $StageRoot -Recurse -Force
 
 Write-Host ''
