@@ -87,64 +87,137 @@ final class ProductDeliveryRulesPage {
 	}
 
 	private function render_list(): void {
-		AdminPageRenderer::open_wrap( __( 'Product Rules', 'cetech-woocommerce-delivery-engine' ) );
-		AdminPageRenderer::add_new_button( self::SLUG, __( 'Add New', 'cetech-woocommerce-delivery-engine' ) );
-
-		$lookups = $this->build_lookups();
-		$records = $this->repository->list( [ 'limit' => 500 ] );
-		$rows    = [];
-
-		foreach ( $records as $record ) {
-			$id = (int) ( $record['id'] ?? 0 );
-			$rows[] = [
-				(string) $id,
-				esc_html( (string) ( $record['target_type'] ?? '' ) ),
-				esc_html( (string) ( $record['target_id'] ?? '' ) ),
-				esc_html( (string) ( $record['target_label_snapshot'] ?? '—' ) ),
-				esc_html( (string) ( $record['fulfilment_availability'] ?? '' ) ),
-				esc_html( (string) ( $record['fulfilment_choice'] ?? '' ) ),
-				esc_html( $this->format_offer_ids( $lookups['offers'], $record['delivery_offer_ids'] ?? null ) ),
-				esc_html( $this->lookup_optional( $lookups['profiles'], $record['logistics_profile_id'] ?? null ) ),
-				esc_html( $this->lookup_optional( $lookups['suppliers'], $record['supplier_id'] ?? null ) ),
-				esc_html( $this->lookup_optional( $lookups['origins'], $record['origin_id'] ?? null ) ),
-				esc_html( (string) ( $record['priority'] ?? '' ) ),
-				esc_html( (string) ( $record['status'] ?? '' ) ),
-				esc_html( (string) ( $record['updated_at'] ?? '' ) ),
-				$this->render_actions( $id ),
-			];
-		}
-
-		AdminPageRenderer::render_table(
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Product delivery', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Product Rules', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Control how specific products should be handled for delivery, pickup, or special logistics.', 'cetech-woocommerce-delivery-engine' ),
 			[
-				__( 'ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Target type', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Target ID', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Target label', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Fulfilment availability', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Fulfilment choice', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Priority', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Updated at', 'cetech-woocommerce-delivery-engine' ),
-				__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
+				'label' => __( 'Add Product Rule', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) ),
+				'class' => 'primary',
 			],
-			$rows
+			[
+				'label' => __( 'Manage Logistics Profiles', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( LogisticsProfilesPage::SLUG ),
+			]
 		);
 
+		AdminPageLayout::render_example(
+			__( 'Heavy Tools → use the Heavy Items logistics profile and restrict same-day delivery.', 'cetech-woocommerce-delivery-engine' )
+		);
+
+		$lookups        = $this->build_lookups();
+		$records        = $this->repository->list( [ 'limit' => 500 ] );
+		$active         = 0;
+		$inactive       = 0;
+		$needing_review = 0;
+
+		foreach ( $records as $record ) {
+			if ( RecordStatus::Active->value === (string) ( $record['status'] ?? '' ) ) {
+				++$active;
+			} else {
+				++$inactive;
+			}
+
+			if ( $this->rule_needs_review( $record ) ) {
+				++$needing_review;
+			}
+		}
+
+		AdminPageLayout::render_summary_stats(
+			[
+				[
+					'label' => __( 'Total rules', 'cetech-woocommerce-delivery-engine' ),
+					'value' => count( $records ),
+					'empty' => [] === $records,
+				],
+				[
+					'label' => __( 'Active rules', 'cetech-woocommerce-delivery-engine' ),
+					'value' => $active,
+					'empty' => 0 === $active,
+				],
+				[
+					'label' => __( 'Inactive rules', 'cetech-woocommerce-delivery-engine' ),
+					'value' => $inactive,
+					'empty' => 0 === $inactive,
+				],
+				[
+					'label' => __( 'Rules needing review', 'cetech-woocommerce-delivery-engine' ),
+					'value' => $needing_review,
+					'empty' => 0 === $needing_review,
+				],
+			]
+		);
+
+		if ( $needing_review > 0 ) {
+			AdminPageLayout::render_warning(
+				__( 'Some rules may not be ready to use', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Inactive rules are ignored at checkout. Active rules without a product target or logistics profile may also need attention before they affect delivery.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Manage logistics profiles', 'cetech-woocommerce-delivery-engine' ),
+				AdminPageRenderer::list_url( LogisticsProfilesPage::SLUG )
+			);
+		}
+
+		if ( [] === $records ) {
+			AdminPageLayout::render_empty_state(
+				__( 'No product rules yet', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Create a product rule when certain products need special delivery treatment, such as heavy, fragile, pickup-only, or supplier-dispatched items.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Add Product Rule', 'cetech-woocommerce-delivery-engine' ),
+				add_query_arg( [ 'page' => self::SLUG, 'action' => 'add' ], admin_url( 'admin.php' ) )
+			);
+		} else {
+			AdminPageLayout::open_section(
+				__( 'All product rules', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Rules apply to matching products, categories, or variations based on target type and ID.', 'cetech-woocommerce-delivery-engine' )
+			);
+
+			$rows = [];
+
+			foreach ( $records as $record ) {
+				$id = (int) ( $record['id'] ?? 0 );
+				$rows[] = [
+					$this->render_rule_name_cell( $record ),
+					esc_html( $this->matching_summary( $record ) ),
+					esc_html( $this->delivery_behavior_summary( $record, $lookups ) ),
+					AdminUiHelper::record_status_badge( (string) ( $record['status'] ?? '' ) ),
+					$this->render_actions( $id ),
+				];
+			}
+
+			AdminPageRenderer::render_table(
+				[
+					__( 'Rule name', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Product / matching condition', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Logistics profile / delivery behavior', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+					__( 'Actions', 'cetech-woocommerce-delivery-engine' ),
+				],
+				$rows,
+				true
+			);
+
+			AdminPageLayout::close_section();
+		}
+
+		$this->render_help_section();
+
+		AdminPageLayout::open_advanced( __( 'Staff testing tools', 'cetech-woocommerce-delivery-engine' ) );
+		echo '<p class="description">' . esc_html__(
+			'Read-only previews for support and troubleshooting. These tools do not change configuration, cart, checkout, or product metadata.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
 		$this->render_resolution_test_tool( $lookups );
-
 		$this->render_selection_validation_test_tool();
+		AdminPageLayout::close_advanced();
 
-		AdminPageRenderer::close_wrap();
+		AdminPageLayout::close_page();
 	}
 
 	private function render_resolution_test_tool( array $lookups ): void {
 		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_resolve' );
 
-		echo '<h2>' . esc_html__( 'Test product rule resolution', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<h3>' . esc_html__( 'Test product rule resolution', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
 		echo '<p class="description">' . esc_html__(
 			'Read-only admin preview of which active product rules would apply. Does not change configuration, cart, checkout, or product metadata.',
 			'cetech-woocommerce-delivery-engine'
@@ -346,7 +419,7 @@ final class ProductDeliveryRulesPage {
 	private function render_selection_validation_test_tool(): void {
 		$draft = $this->action_handler->notices()->consume_form_draft( self::SLUG . '_validate' );
 
-		echo '<h2>' . esc_html__( 'Test delivery selection validation', 'cetech-woocommerce-delivery-engine' ) . '</h2>';
+		echo '<h3>' . esc_html__( 'Test delivery selection validation', 'cetech-woocommerce-delivery-engine' ) . '</h3>';
 		echo '<p class="description">' . esc_html__(
 			'Read-only admin check of whether a display_key would validate for a product context. Does not write cart, session, order, or product metadata.',
 			'cetech-woocommerce-delivery-engine'
@@ -518,7 +591,50 @@ final class ProductDeliveryRulesPage {
 			? __( 'Edit Product Rule', 'cetech-woocommerce-delivery-engine' )
 			: __( 'Add Product Rule', 'cetech-woocommerce-delivery-engine' );
 
-		AdminPageRenderer::open_wrap( $title );
+		AdminPageLayout::open_page();
+		AdminPageLayout::render_page_header(
+			__( 'Product delivery', 'cetech-woocommerce-delivery-engine' ),
+			$title,
+			__( 'Define which products this rule applies to and how delivery, pickup, or logistics handling should work.', 'cetech-woocommerce-delivery-engine' ),
+			[
+				'label' => __( 'Back to product rules', 'cetech-woocommerce-delivery-engine' ),
+				'url'   => AdminPageRenderer::list_url( self::SLUG ),
+				'class' => 'secondary',
+			]
+		);
+
+		AdminPageLayout::render_example(
+			__( 'Fragile Items → require careful handling and may only qualify for standard delivery.', 'cetech-woocommerce-delivery-engine' )
+		);
+
+		$status = (string) ( $record['status'] ?? RecordStatus::Active->value );
+
+		if ( RecordStatus::Inactive->value === $status ) {
+			AdminPageLayout::render_warning(
+				__( 'This rule is inactive', 'cetech-woocommerce-delivery-engine' ),
+				__( 'It will not affect delivery until you set the status back to Active and save.', 'cetech-woocommerce-delivery-engine' )
+			);
+		}
+
+		$target_id = isset( $record['target_id'] ) ? (int) $record['target_id'] : 0;
+
+		if ( $target_id <= 0 ) {
+			AdminPageLayout::render_warning(
+				__( 'No matching product selected', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Choose a WooCommerce product, variation, or category ID so the rule knows what to match.', 'cetech-woocommerce-delivery-engine' )
+			);
+		}
+
+		$logistics_profile_id = isset( $record['logistics_profile_id'] ) ? (int) $record['logistics_profile_id'] : 0;
+
+		if ( $logistics_profile_id <= 0 && FulfilmentChoice::Delivery->value === (string) ( $record['fulfilment_choice'] ?? '' ) ) {
+			AdminPageLayout::render_warning(
+				__( 'No logistics profile linked', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Delivery rules often work best when linked to a logistics profile for special handling or pricing.', 'cetech-woocommerce-delivery-engine' ),
+				__( 'Manage logistics profiles', 'cetech-woocommerce-delivery-engine' ),
+				AdminPageRenderer::list_url( LogisticsProfilesPage::SLUG )
+			);
+		}
 
 		echo '<form method="post" action="">';
 		AdminFormHelper::nonce_field( self::ACTION_SAVE );
@@ -528,42 +644,75 @@ final class ProductDeliveryRulesPage {
 			echo '<input type="hidden" name="id" value="' . esc_attr( (string) $record['id'] ) . '" />';
 		}
 
-		echo '<table class="form-table" role="presentation"><tbody>';
+		AdminPageLayout::open_form_panel(
+			__( 'Rule details', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Status and internal notes for staff reference.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::select_field(
+			'status',
+			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_status_options(),
+			$status,
+			__( 'Inactive rules are ignored until activated again.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminFormHelper::textarea_field(
+			'internal_notes',
+			__( 'Internal notes', 'cetech-woocommerce-delivery-engine' ),
+			(string) ( $record['internal_notes'] ?? '' ),
+			4,
+			__( 'Private admin-only notes. Not shown to customers.', 'cetech-woocommerce-delivery-engine' )
+		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_form_panel(
+			__( 'Product matching', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Which product, variation, or category this rule applies to.', 'cetech-woocommerce-delivery-engine' )
+		);
 		AdminFormHelper::select_field(
 			'target_type',
-			__( 'Target type', 'cetech-woocommerce-delivery-engine' ),
-			$this->target_type_options(),
-			(string) ( $record['target_type'] ?? ProductTargetType::Product->value )
+			__( 'Match type', 'cetech-woocommerce-delivery-engine' ),
+			$this->friendly_target_type_options(),
+			(string) ( $record['target_type'] ?? ProductTargetType::Product->value ),
+			__( 'Whether the rule targets a single product, a variation, or a whole category.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::number_field(
 			'target_id',
-			__( 'Target ID', 'cetech-woocommerce-delivery-engine' ),
+			__( 'WooCommerce ID', 'cetech-woocommerce-delivery-engine' ),
 			isset( $record['target_id'] ) ? (int) $record['target_id'] : null,
 			1,
-			__( 'WooCommerce product, variation, or product category term ID.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Product ID, variation ID, or product category term ID from WooCommerce.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::text_field(
 			'target_label_snapshot',
-			__( 'Target label snapshot', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Display label', 'cetech-woocommerce-delivery-engine' ),
 			(string) ( $record['target_label_snapshot'] ?? '' ),
 			false,
-			__( 'Optional. Auto-filled from WooCommerce when left blank on save.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Optional friendly name for lists. Auto-filled from WooCommerce when left blank on save.', 'cetech-woocommerce-delivery-engine' )
+		);
+		echo '<tr><th scope="row"></th><td><p class="description cetech-de-setting-code">target_type, target_id, target_label_snapshot</p></td></tr>';
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_form_panel(
+			__( 'Delivery handling', 'cetech-woocommerce-delivery-engine' ),
+			__( 'How matched products should be offered for delivery or pickup.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::select_field(
 			'fulfilment_availability',
 			__( 'Fulfilment availability', 'cetech-woocommerce-delivery-engine' ),
-			$this->availability_options(),
-			(string) ( $record['fulfilment_availability'] ?? FulfilmentAvailability::InStore->value )
+			$this->friendly_availability_options(),
+			(string) ( $record['fulfilment_availability'] ?? FulfilmentAvailability::InStore->value ),
+			__( 'Where the product is available from, such as in store or from a warehouse.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::select_field(
 			'fulfilment_choice',
 			__( 'Fulfilment choice', 'cetech-woocommerce-delivery-engine' ),
-			$this->choice_options(),
-			(string) ( $record['fulfilment_choice'] ?? FulfilmentChoice::Delivery->value )
+			$this->friendly_choice_options(),
+			(string) ( $record['fulfilment_choice'] ?? FulfilmentChoice::Delivery->value ),
+			__( 'Whether customers can choose home delivery or store pickup for this rule.', 'cetech-woocommerce-delivery-engine' )
 		);
 		AdminFormHelper::checkbox_group_field(
 			'delivery_offer_ids',
-			__( 'Delivery offers', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Allowed delivery offers', 'cetech-woocommerce-delivery-engine' ),
 			$this->delivery_offer_options(),
 			(array) ( $record['delivery_offer_ids'] ?? [] ),
 			__( 'Required for delivery fulfilment. Leave empty when fulfilment choice is store pickup.', 'cetech-woocommerce-delivery-engine' )
@@ -573,45 +722,48 @@ final class ProductDeliveryRulesPage {
 			__( 'Logistics profile', 'cetech-woocommerce-delivery-engine' ),
 			$this->optional_select_options( $this->logistics_profile_options() ),
 			(string) ( $record['logistics_profile_id'] ?? '' ),
-			__( 'Optional.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Optional. Links special handling rules such as heavy, fragile, or pickup-only items.', 'cetech-woocommerce-delivery-engine' )
 		);
+		AdminPageLayout::close_form_panel();
+
+		AdminPageLayout::open_advanced( __( 'Advanced settings', 'cetech-woocommerce-delivery-engine' ) );
+		echo '<p class="description">' . esc_html__(
+			'Supplier dispatch, rule priority, and other technical options. Most stores can leave these blank unless CETECH support asks you to configure them.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+		echo '<table class="form-table cetech-de-form-table" role="presentation"><tbody>';
 		AdminFormHelper::select_field(
 			'supplier_id',
 			__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
 			$this->optional_select_options( $this->supplier_options() ),
 			(string) ( $record['supplier_id'] ?? '' ),
-			__( 'Optional.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Optional. Use for supplier-dispatched products.', 'cetech-woocommerce-delivery-engine' )
 		);
+		echo '<tr><th scope="row"></th><td><p class="description cetech-de-setting-code">supplier_id</p></td></tr>';
 		AdminFormHelper::select_field(
 			'origin_id',
 			__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
 			$this->optional_select_options( $this->origin_options() ),
 			(string) ( $record['origin_id'] ?? '' ),
-			__( 'Optional. Must belong to selected supplier when both are set.', 'cetech-woocommerce-delivery-engine' )
+			__( 'Optional. Must belong to the selected supplier when both are set.', 'cetech-woocommerce-delivery-engine' )
 		);
+		echo '<tr><th scope="row"></th><td><p class="description cetech-de-setting-code">origin_id</p></td></tr>';
 		AdminFormHelper::number_field(
 			'priority',
 			__( 'Priority', 'cetech-woocommerce-delivery-engine' ),
-			isset( $record['priority'] ) ? (int) $record['priority'] : 100
+			isset( $record['priority'] ) ? (int) $record['priority'] : 100,
+			0,
+			__( 'Lower numbers win when multiple rules could match. Default is 100.', 'cetech-woocommerce-delivery-engine' )
 		);
-		AdminFormHelper::select_field(
-			'status',
-			__( 'Status', 'cetech-woocommerce-delivery-engine' ),
-			$this->status_options(),
-			(string) ( $record['status'] ?? RecordStatus::Active->value )
-		);
-		AdminFormHelper::textarea_field(
-			'internal_notes',
-			__( 'Internal notes', 'cetech-woocommerce-delivery-engine' ),
-			(string) ( $record['internal_notes'] ?? '' ),
-			4,
-			__( 'Private admin-only notes. Not shown to customers.', 'cetech-woocommerce-delivery-engine' )
-		);
+		echo '<tr><th scope="row"></th><td><p class="description cetech-de-setting-code">priority</p></td></tr>';
 		echo '</tbody></table>';
-		submit_button( $is_edit ? __( 'Update Product Rule', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Product Rule', 'cetech-woocommerce-delivery-engine' ) );
+		AdminPageLayout::close_advanced();
+
+		echo '<div class="cetech-de-form-actions">';
+		submit_button( $is_edit ? __( 'Save Product Rule', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Product Rule', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
-		echo '</form>';
-		AdminPageRenderer::close_wrap();
+		echo '</div></form>';
+		AdminPageLayout::close_page();
 	}
 
 	private function handle_save(): void {
@@ -722,18 +874,18 @@ final class ProductDeliveryRulesPage {
 	}
 
 	private function render_actions( int $id ): string {
-		$edit_url = AdminPageRenderer::edit_url( self::SLUG, $id );
+		$edit_url = esc_url( AdminPageRenderer::edit_url( self::SLUG, $id ) );
+		$edit     = '<a href="' . $edit_url . '">' . esc_html__( 'Edit', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 
-		ob_start();
-		echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'cetech-woocommerce-delivery-engine' ) . '</a> | ';
-		echo '<form method="post" style="display:inline;" onsubmit="return confirm(\'' . esc_js( __( 'Deactivate this product rule?', 'cetech-woocommerce-delivery-engine' ) ) . '\');">';
-		AdminFormHelper::nonce_field( self::ACTION_DEACTIVATE );
-		echo '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_DEACTIVATE ) . '" />';
-		echo '<input type="hidden" name="id" value="' . esc_attr( (string) $id ) . '" />';
-		submit_button( __( 'Deactivate', 'cetech-woocommerce-delivery-engine' ), 'link-delete', 'submit', false );
-		echo '</form>';
+		$deactivate = '<form method="post" style="display:inline;margin-left:8px;">';
+		$deactivate .= wp_nonce_field( self::ACTION_DEACTIVATE, 'cetech_de_nonce', true, false );
+		$deactivate .= '<input type="hidden" name="cetech_de_action" value="' . esc_attr( self::ACTION_DEACTIVATE ) . '" />';
+		$deactivate .= '<input type="hidden" name="id" value="' . esc_attr( (string) $id ) . '" />';
+		$deactivate .= '<button type="submit" class="button-link delete" onclick="return confirm(\'' . esc_js( __( 'Deactivate this product rule?', 'cetech-woocommerce-delivery-engine' ) ) . '\');">';
+		$deactivate .= esc_html__( 'Deactivate', 'cetech-woocommerce-delivery-engine' );
+		$deactivate .= '</button></form>';
 
-		return (string) ob_get_clean();
+		return $edit . $deactivate;
 	}
 
 	/**
@@ -989,6 +1141,203 @@ final class ProductDeliveryRulesPage {
 		}
 
 		return $indexed;
+	}
+
+	/**
+	 * @param array<string, mixed> $record
+	 */
+	private function render_rule_name_cell( array $record ): string {
+		$label = trim( (string) ( $record['target_label_snapshot'] ?? '' ) );
+		$id    = (int) ( $record['id'] ?? 0 );
+
+		if ( '' === $label ) {
+			$label = sprintf(
+				/* translators: %d: product rule ID */
+				__( 'Product rule #%d', 'cetech-woocommerce-delivery-engine' ),
+				$id
+			);
+		}
+
+		$name = esc_html( $label );
+
+		if ( $id <= 0 ) {
+			return $name;
+		}
+
+		return $name . '<br><span class="cetech-de-setting-code">#' . esc_html( (string) $id ) . '</span>';
+	}
+
+	/**
+	 * @param array<string, mixed> $record
+	 */
+	private function matching_summary( array $record ): string {
+		$type  = $this->target_type_label( (string) ( $record['target_type'] ?? '' ) );
+		$id    = (int) ( $record['target_id'] ?? 0 );
+		$label = trim( (string) ( $record['target_label_snapshot'] ?? '' ) );
+
+		if ( '' !== $label && $id > 0 ) {
+			return sprintf( '%s (%s #%d)', $label, $type, $id );
+		}
+
+		if ( $id > 0 ) {
+			return sprintf( '%s #%d', $type, $id );
+		}
+
+		return $type;
+	}
+
+	/**
+	 * @param array<string, mixed> $record
+	 * @param array{
+	 *     offers: array<int, array<string, mixed>>,
+	 *     profiles: array<int, array<string, mixed>>,
+	 *     suppliers: array<int, array<string, mixed>>,
+	 *     origins: array<int, array<string, mixed>>
+	 * } $lookups
+	 */
+	private function delivery_behavior_summary( array $record, array $lookups ): string {
+		$parts = [];
+
+		$profile = $this->lookup_optional( $lookups['profiles'], $record['logistics_profile_id'] ?? null );
+
+		if ( '—' !== $profile ) {
+			$parts[] = $profile;
+		}
+
+		$parts[] = $this->choice_label( (string) ( $record['fulfilment_choice'] ?? '' ) );
+		$parts[] = $this->availability_label( (string) ( $record['fulfilment_availability'] ?? '' ) );
+
+		$offers = $this->format_offer_ids( $lookups['offers'], $record['delivery_offer_ids'] ?? null );
+
+		if ( '—' !== $offers ) {
+			$parts[] = $offers;
+		}
+
+		return implode( ' · ', array_filter( $parts ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $record
+	 */
+	private function rule_needs_review( array $record ): bool {
+		if ( RecordStatus::Inactive->value === (string) ( $record['status'] ?? '' ) ) {
+			return true;
+		}
+
+		return (int) ( $record['target_id'] ?? 0 ) <= 0;
+	}
+
+	private function render_help_section(): void {
+		AdminPageLayout::open_section(
+			__( 'What is a product rule?', 'cetech-woocommerce-delivery-engine' ),
+			__( 'Product rules tell the Delivery Engine how to treat certain products during delivery.', 'cetech-woocommerce-delivery-engine' )
+		);
+		echo '<div class="cetech-de-help-card">';
+		echo '<p>' . esc_html__(
+			'Use them when a product needs special handling, such as heavy items, fragile items, pickup-only items, supplier-dispatched items, or products that should use a specific logistics profile.',
+			'cetech-woocommerce-delivery-engine'
+		) . '</p>';
+		echo '<ul class="cetech-de-help-steps">';
+		echo '<li>' . esc_html__( 'Heavy tools → special delivery handling', 'cetech-woocommerce-delivery-engine' ) . '</li>';
+		echo '<li>' . esc_html__( 'Fragile items → careful handling / standard delivery only', 'cetech-woocommerce-delivery-engine' ) . '</li>';
+		echo '<li>' . esc_html__( 'Pickup-only products → do not show normal delivery', 'cetech-woocommerce-delivery-engine' ) . '</li>';
+		echo '<li>' . esc_html__( 'Supplier-dispatched products → dispatch from supplier origin', 'cetech-woocommerce-delivery-engine' ) . '</li>';
+		echo '<li>' . esc_html__( 'Same-day eligible products → allow faster delivery offers', 'cetech-woocommerce-delivery-engine' ) . '</li>';
+		echo '</ul>';
+		printf(
+			'<p class="cetech-de-help-action"><a class="button button-secondary" href="%1$s">%2$s</a> ',
+			esc_url( AdminPageRenderer::list_url( LogisticsProfilesPage::SLUG ) ),
+			esc_html__( 'Manage logistics profiles', 'cetech-woocommerce-delivery-engine' )
+		);
+		printf(
+			'<a class="button button-secondary" href="%1$s">%2$s</a></p>',
+			esc_url( AdminPageRenderer::list_url( AdminMenu::SYSTEM_STATUS_SLUG ) ),
+			esc_html__( 'Back to Dashboard', 'cetech-woocommerce-delivery-engine' )
+		);
+		echo '</div>';
+		AdminPageLayout::close_section();
+	}
+
+	private function target_type_label( string $type ): string {
+		return match ( $type ) {
+			ProductTargetType::Product->value => __( 'Product', 'cetech-woocommerce-delivery-engine' ),
+			ProductTargetType::Variation->value => __( 'Variation', 'cetech-woocommerce-delivery-engine' ),
+			ProductTargetType::Category->value => __( 'Category', 'cetech-woocommerce-delivery-engine' ),
+			default => $type,
+		};
+	}
+
+	private function availability_label( string $availability ): string {
+		return match ( $availability ) {
+			FulfilmentAvailability::InStore->value => __( 'In store', 'cetech-woocommerce-delivery-engine' ),
+			FulfilmentAvailability::InWarehouse->value => __( 'In warehouse', 'cetech-woocommerce-delivery-engine' ),
+			FulfilmentAvailability::InternationalFulfilment->value => __( 'International fulfilment', 'cetech-woocommerce-delivery-engine' ),
+			default => $availability,
+		};
+	}
+
+	private function choice_label( string $choice ): string {
+		return match ( $choice ) {
+			FulfilmentChoice::Delivery->value => __( 'Delivery', 'cetech-woocommerce-delivery-engine' ),
+			FulfilmentChoice::StorePickup->value => __( 'Store pickup', 'cetech-woocommerce-delivery-engine' ),
+			default => $choice,
+		};
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_target_type_options(): array {
+		$options = [];
+
+		foreach ( ProductTargetType::cases() as $case ) {
+			$options[ $case->value ] = $this->target_type_label( $case->value );
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_availability_options(): array {
+		$options = [];
+
+		foreach ( FulfilmentAvailability::cases() as $case ) {
+			$options[ $case->value ] = $this->availability_label( $case->value );
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_choice_options(): array {
+		$options = [];
+
+		foreach ( FulfilmentChoice::cases() as $case ) {
+			$options[ $case->value ] = $this->choice_label( $case->value );
+		}
+
+		return $options;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function friendly_status_options(): array {
+		$options = [];
+
+		foreach ( RecordStatus::cases() as $status ) {
+			if ( RecordStatus::Archived->value === $status->value ) {
+				continue;
+			}
+
+			$options[ $status->value ] = AdminUiHelper::record_status_label( $status->value );
+		}
+
+		return $options;
 	}
 
 	/**
