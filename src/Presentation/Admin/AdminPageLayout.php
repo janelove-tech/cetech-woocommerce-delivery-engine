@@ -485,6 +485,35 @@ final class AdminPageLayout {
 				line-height: 1.6;
 			}
 			.cetech-de-help-action { margin: 14px 0 0; }
+			.cetech-de-delete-link {
+				color: #b32d2e;
+			}
+			.cetech-de-delete-link:hover,
+			.cetech-de-delete-link:focus {
+				color: #8a2424;
+			}
+			.cetech-de-action-sep {
+				color: #c3c4c7;
+				margin: 0 4px;
+			}
+			.cetech-de-delete-confirm {
+				background: var(--cetech-de-bg);
+				border: 1px solid var(--cetech-de-border);
+				border-radius: var(--cetech-de-radius);
+				padding: 20px 22px;
+				box-shadow: var(--cetech-de-shadow);
+			}
+			.cetech-de-delete-confirm-actions {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+				align-items: center;
+				margin-top: 18px;
+			}
+			.cetech-de-delete-confirm-form {
+				display: inline;
+				margin-left: auto;
+			}
 			@media (max-width: 782px) {
 				.cetech-de-dashboard-header,
 				.cetech-de-page-header { padding: 18px; }

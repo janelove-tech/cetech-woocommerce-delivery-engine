@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CetechDeliveryEngine\Infrastructure\Persistence;
 
+use CetechDeliveryEngine\Application\Order\OrderDeliverySnapshot;
 use CetechDeliveryEngine\Domain\Enum\RecordStatus;
 use CetechDeliveryEngine\Domain\RateCard\RateCardRepositoryInterface;
 
@@ -74,8 +75,56 @@ final class WpdbRateCardRepository extends AbstractWpdbRepository implements Rat
 		return $this->mark_inactive( $id );
 	}
 
+	public function hardDelete( int $id ): bool {
+		return $this->delete_row_by_id( $id );
+	}
+
 	public function count_all(): int {
 		return parent::count_all();
+	}
+
+	public function countByDeliveryOfferId( int $delivery_offer_id ): int {
+		return $this->count_where( 'delivery_offer_id', $delivery_offer_id );
+	}
+
+	public function countByDestinationZoneId( int $destination_zone_id ): int {
+		return $this->count_where( 'destination_zone_id', $destination_zone_id );
+	}
+
+	public function countOrderSnapshotReferences( int $rate_card_id ): int {
+		global $wpdb;
+
+		if ( $rate_card_id <= 0 ) {
+			return 0;
+		}
+
+		$patterns = [
+			'%"rate_card_id":' . $rate_card_id . ',%',
+			'%"rate_card_id":' . $rate_card_id . '}',
+			'%"rate_card_id": ' . $rate_card_id . ',%',
+			'%"rate_card_id": ' . $rate_card_id . '}',
+		];
+
+		$total = 0;
+
+		foreach ( $patterns as $pattern ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$count = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value LIKE %s",
+					OrderDeliverySnapshot::META_LINE_SNAPSHOT,
+					$pattern
+				)
+			);
+
+			$total = max( $total, $count );
+		}
+
+		return $total;
+	}
+
+	public function countByLogisticsProfileId( int $logistics_profile_id ): int {
+		return $this->count_where( 'logistics_profile_id', $logistics_profile_id );
 	}
 
 	public function listActiveForQuoteMatch(

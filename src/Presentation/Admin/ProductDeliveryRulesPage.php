@@ -34,6 +34,8 @@ final class ProductDeliveryRulesPage {
 
 	private const ACTION_DEACTIVATE = 'cetech_de_deactivate_product_delivery_rule';
 
+	private const ACTION_DELETE = 'cetech_de_delete_product_delivery_rule';
+
 	private const ACTION_RESOLVE_TEST = 'cetech_de_test_product_rule_resolution';
 
 	private const ACTION_VALIDATE_SELECTION = 'cetech_de_test_selection_validation';
@@ -48,7 +50,8 @@ final class ProductDeliveryRulesPage {
 		private ProductDeliveryRuleResolver $rule_resolver,
 		private ProductDeliverySelectionValidator $selection_validator,
 		private AdminActionHandler $action_handler,
-		private ConfigurationAuditLogger $audit_logger
+		private ConfigurationAuditLogger $audit_logger,
+		private AdminRecordDependencyChecker $dependency_checker
 	) {
 	}
 
@@ -59,6 +62,10 @@ final class ProductDeliveryRulesPage {
 
 		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE, self::ACTION_DEACTIVATE, 'manage_product_delivery_rules', self::SLUG ) ) {
 			$this->handle_deactivate();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_DELETE, self::ACTION_DELETE, 'manage_product_delivery_rules', self::SLUG ) ) {
+			$this->handle_delete();
 		}
 
 		if ( $this->action_handler->verify_post( self::ACTION_RESOLVE_TEST, self::ACTION_RESOLVE_TEST, 'manage_product_delivery_rules', self::SLUG ) ) {
@@ -77,6 +84,11 @@ final class ProductDeliveryRulesPage {
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : 'list';
+
+		if ( 'delete' === $action ) {
+			$this->render_delete_confirmation();
+			return;
+		}
 
 		if ( 'add' === $action || 'edit' === $action ) {
 			$this->render_form( 'edit' === $action );
@@ -763,6 +775,16 @@ final class ProductDeliveryRulesPage {
 		submit_button( $is_edit ? __( 'Save Product Rule', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Product Rule', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		echo '</div></form>';
+
+		if ( $is_edit && isset( $record['id'] ) && (int) $record['id'] > 0 ) {
+			AdminPermanentDeleteFlow::render_edit_danger_zone(
+				self::SLUG,
+				(int) $record['id'],
+				self::ACTION_DELETE,
+				'manage_product_delivery_rules'
+			);
+		}
+
 		AdminPageLayout::close_page();
 	}
 
@@ -873,6 +895,85 @@ final class ProductDeliveryRulesPage {
 		$this->action_handler->redirect( self::SLUG );
 	}
 
+	private function handle_delete(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid product rule.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Product rule not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$dependencies = $this->dependency_checker->check_product_rule( $id );
+
+		if ( ! $dependencies->can_delete ) {
+			$this->action_handler->notices()->flash_error( implode( ' ', $dependencies->blocking_reasons ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		if ( ! $this->repository->hardDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to delete product rule.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log( 'deleted', 'product_delivery_rule', $id, $previous, null );
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Product rule permanently deleted.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Product rule deleted, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_delete_confirmation(): void {
+		AdminPageAccess::require_capability( 'manage_product_delivery_rules' );
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$record = $this->repository->findById( $id );
+
+		if ( null === $record ) {
+			wp_die( esc_html__( 'Product rule not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$name = (string) ( $record['target_label_snapshot'] ?? '' );
+
+		if ( '' === $name ) {
+			$name = sprintf(
+				'%s #%d',
+				(string) ( $record['target_type'] ?? '' ),
+				(int) ( $record['target_id'] ?? 0 )
+			);
+		}
+
+		AdminPermanentDeleteFlow::render_confirmation_screen(
+			self::SLUG,
+			self::ACTION_DELETE,
+			self::ACTION_DEACTIVATE,
+			'manage_product_delivery_rules',
+			__( 'Product Rule', 'cetech-woocommerce-delivery-engine' ),
+			$id,
+			$name,
+			null,
+			$this->dependency_checker->check_product_rule( $id )
+		);
+	}
+
 	private function render_actions( int $id ): string {
 		$edit_url = esc_url( AdminPageRenderer::edit_url( self::SLUG, $id ) );
 		$edit     = '<a href="' . $edit_url . '">' . esc_html__( 'Edit', 'cetech-woocommerce-delivery-engine' ) . '</a>';
@@ -885,7 +986,14 @@ final class ProductDeliveryRulesPage {
 		$deactivate .= esc_html__( 'Deactivate', 'cetech-woocommerce-delivery-engine' );
 		$deactivate .= '</button></form>';
 
-		return $edit . $deactivate;
+		$delete = AdminPermanentDeleteFlow::list_delete_link(
+			self::SLUG,
+			$id,
+			self::ACTION_DELETE,
+			'manage_product_delivery_rules'
+		);
+
+		return $edit . $deactivate . $delete;
 	}
 
 	/**

@@ -21,6 +21,8 @@ final class DestinationZonesPage {
 
 	private const ACTION_DEACTIVATE = 'cetech_de_deactivate_destination_zone';
 
+	private const ACTION_DELETE = 'cetech_de_delete_destination_zone';
+
 	private const ACTION_TEST = 'cetech_de_test_destination_zone';
 
 	private const RULE_FORM_ROWS = 8;
@@ -33,7 +35,8 @@ final class DestinationZonesPage {
 		private DestinationRuleValidator $rule_validator,
 		private DestinationZoneTestMatcher $test_matcher,
 		private AdminActionHandler $action_handler,
-		private ConfigurationAuditLogger $audit_logger
+		private ConfigurationAuditLogger $audit_logger,
+		private AdminRecordDependencyChecker $dependency_checker
 	) {
 	}
 
@@ -44,6 +47,10 @@ final class DestinationZonesPage {
 
 		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE, self::ACTION_DEACTIVATE, 'manage_delivery_zones', self::SLUG ) ) {
 			$this->handle_deactivate();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_DELETE, self::ACTION_DELETE, 'manage_delivery_zones', self::SLUG ) ) {
+			$this->handle_delete();
 		}
 
 		if ( $this->action_handler->verify_post( self::ACTION_TEST, self::ACTION_TEST, 'manage_delivery_zones', self::SLUG ) ) {
@@ -58,6 +65,11 @@ final class DestinationZonesPage {
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : 'list';
+
+		if ( 'delete' === $action ) {
+			$this->render_delete_confirmation();
+			return;
+		}
 
 		if ( 'add' === $action || 'edit' === $action ) {
 			$this->render_form( 'edit' === $action );
@@ -320,6 +332,16 @@ final class DestinationZonesPage {
 		submit_button( $is_edit ? __( 'Save Zone', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Zone', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		echo '</div></form>';
+
+		if ( $is_edit && isset( $record['id'] ) && (int) $record['id'] > 0 ) {
+			AdminPermanentDeleteFlow::render_edit_danger_zone(
+				self::SLUG,
+				(int) $record['id'],
+				self::ACTION_DELETE,
+				'manage_delivery_zones'
+			);
+		}
+
 		AdminPageLayout::close_page();
 	}
 
@@ -516,6 +538,77 @@ final class DestinationZonesPage {
 		$this->action_handler->redirect( self::SLUG );
 	}
 
+	private function handle_delete(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid destination zone.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->zone_repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Destination zone not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$dependencies = $this->dependency_checker->check_destination_zone( $id );
+
+		if ( ! $dependencies->can_delete ) {
+			$this->action_handler->notices()->flash_error( implode( ' ', $dependencies->blocking_reasons ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$this->rule_repository->deleteByZoneId( $id );
+
+		if ( ! $this->zone_repository->hardDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to delete destination zone.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log( 'deleted', 'destination_zone', $id, $previous, null );
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Destination zone permanently deleted.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Destination zone deleted, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_delete_confirmation(): void {
+		AdminPageAccess::require_capability( 'manage_delivery_zones' );
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$record = $this->zone_repository->findById( $id );
+
+		if ( null === $record ) {
+			wp_die( esc_html__( 'Destination zone not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		AdminPermanentDeleteFlow::render_confirmation_screen(
+			self::SLUG,
+			self::ACTION_DELETE,
+			self::ACTION_DEACTIVATE,
+			'manage_delivery_zones',
+			__( 'Delivery Zone', 'cetech-woocommerce-delivery-engine' ),
+			$id,
+			(string) ( $record['internal_name'] ?? $record['public_label'] ?? '' ),
+			(string) ( $record['internal_code'] ?? '' ),
+			$this->dependency_checker->check_destination_zone( $id )
+		);
+	}
+
 	private function handle_test_match(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$input = [
@@ -674,7 +767,14 @@ final class DestinationZonesPage {
 		$deactivate .= esc_html__( 'Deactivate', 'cetech-woocommerce-delivery-engine' );
 		$deactivate .= '</button></form>';
 
-		return $edit . $deactivate;
+		$delete = AdminPermanentDeleteFlow::list_delete_link(
+			self::SLUG,
+			$id,
+			self::ACTION_DELETE,
+			'manage_delivery_zones'
+		);
+
+		return $edit . $deactivate . $delete;
 	}
 
 	/**

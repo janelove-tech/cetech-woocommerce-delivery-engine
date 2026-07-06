@@ -28,6 +28,8 @@ final class RateCardsPage {
 
 	private const ACTION_DEACTIVATE = 'cetech_de_deactivate_rate_card';
 
+	private const ACTION_DELETE = 'cetech_de_delete_rate_card';
+
 	private const ACTION_TEST = 'cetech_de_test_rate_card';
 
 	private const ACTION_QUOTE_TEST = 'cetech_de_test_rate_quote';
@@ -43,7 +45,8 @@ final class RateCardsPage {
 		private AdminRateCardTester $tester,
 		private RateQuoteEngine $quote_engine,
 		private AdminActionHandler $action_handler,
-		private ConfigurationAuditLogger $audit_logger
+		private ConfigurationAuditLogger $audit_logger,
+		private AdminRecordDependencyChecker $dependency_checker
 	) {
 	}
 
@@ -54,6 +57,10 @@ final class RateCardsPage {
 
 		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE, self::ACTION_DEACTIVATE, 'manage_delivery_rate_cards', self::SLUG ) ) {
 			$this->handle_deactivate();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_DELETE, self::ACTION_DELETE, 'manage_delivery_rate_cards', self::SLUG ) ) {
+			$this->handle_delete();
 		}
 
 		if ( $this->action_handler->verify_post( self::ACTION_TEST, self::ACTION_TEST, 'manage_delivery_rate_cards', self::SLUG ) ) {
@@ -72,6 +79,11 @@ final class RateCardsPage {
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : 'list';
+
+		if ( 'delete' === $action ) {
+			$this->render_delete_confirmation();
+			return;
+		}
 
 		if ( 'add' === $action || 'edit' === $action ) {
 			$this->render_form( 'edit' === $action );
@@ -484,6 +496,16 @@ final class RateCardsPage {
 		submit_button( $is_edit ? __( 'Save Rate Card', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Rate Card', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		echo '</div></form>';
+
+		if ( $is_edit && isset( $record['id'] ) && (int) $record['id'] > 0 ) {
+			AdminPermanentDeleteFlow::render_edit_danger_zone(
+				self::SLUG,
+				(int) $record['id'],
+				self::ACTION_DELETE,
+				'manage_delivery_rate_cards'
+			);
+		}
+
 		AdminPageLayout::close_page();
 	}
 
@@ -601,6 +623,75 @@ final class RateCardsPage {
 		}
 
 		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function handle_delete(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid rate card.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Rate card not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$dependencies = $this->dependency_checker->check_rate_card( $id );
+
+		if ( ! $dependencies->can_delete ) {
+			$this->action_handler->notices()->flash_error( implode( ' ', $dependencies->blocking_reasons ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		if ( ! $this->repository->hardDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to delete rate card.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log( 'deleted', 'rate_card', $id, $previous, null );
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Rate card permanently deleted.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Rate card deleted, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_delete_confirmation(): void {
+		AdminPageAccess::require_capability( 'manage_delivery_rate_cards' );
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$record = $this->repository->findById( $id );
+
+		if ( null === $record ) {
+			wp_die( esc_html__( 'Rate card not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		AdminPermanentDeleteFlow::render_confirmation_screen(
+			self::SLUG,
+			self::ACTION_DELETE,
+			self::ACTION_DEACTIVATE,
+			'manage_delivery_rate_cards',
+			__( 'Rate Card', 'cetech-woocommerce-delivery-engine' ),
+			$id,
+			(string) ( $record['internal_code'] ?? '' ),
+			(string) ( $record['internal_code'] ?? '' ),
+			$this->dependency_checker->check_rate_card( $id )
+		);
 	}
 
 	private function handle_test(): void {
@@ -727,6 +818,12 @@ final class RateCardsPage {
 		echo '<input type="hidden" name="id" value="' . esc_attr( (string) $id ) . '" />';
 		submit_button( __( 'Deactivate', 'cetech-woocommerce-delivery-engine' ), 'link-delete', 'submit', false );
 		echo '</form>';
+		echo AdminPermanentDeleteFlow::list_delete_link(
+			self::SLUG,
+			$id,
+			self::ACTION_DELETE,
+			'manage_delivery_rate_cards'
+		);
 
 		return (string) ob_get_clean();
 	}

@@ -181,4 +181,33 @@ abstract class AbstractWpdbRepository {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}`" );
 	}
+
+	protected function delete_row_by_id( int $id ): bool {
+		global $wpdb;
+
+		if ( $id <= 0 ) {
+			return false;
+		}
+
+		$table = $this->table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$deleted = $wpdb->delete( $table, [ 'id' => $id ], [ '%d' ] );
+
+		return false !== $deleted && $deleted > 0;
+	}
+
+	protected function count_where( string $column, int $value ): int {
+		global $wpdb;
+
+		if ( $value <= 0 ) {
+			return 0;
+		}
+
+		$table = $this->table_name();
+		$sql   = "SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = %d";
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var( $wpdb->prepare( $sql, $value ) );
+	}
 }

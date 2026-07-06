@@ -24,9 +24,13 @@ final class SuppliersOriginsPage {
 
 	private const ACTION_DEACTIVATE_SUPPLIER = 'cetech_de_deactivate_supplier';
 
+	private const ACTION_DELETE_SUPPLIER = 'cetech_de_delete_supplier';
+
 	private const ACTION_SAVE_ORIGIN = 'cetech_de_save_origin';
 
 	private const ACTION_DEACTIVATE_ORIGIN = 'cetech_de_deactivate_origin';
+
+	private const ACTION_DELETE_ORIGIN = 'cetech_de_delete_origin';
 
 	private const DRAFT_SUPPLIER = 'supplier';
 
@@ -38,7 +42,8 @@ final class SuppliersOriginsPage {
 		private SupplierValidator $supplier_validator,
 		private OriginValidator $origin_validator,
 		private AdminActionHandler $action_handler,
-		private ConfigurationAuditLogger $audit_logger
+		private ConfigurationAuditLogger $audit_logger,
+		private AdminRecordDependencyChecker $dependency_checker
 	) {
 	}
 
@@ -51,12 +56,20 @@ final class SuppliersOriginsPage {
 			$this->handle_deactivate_supplier();
 		}
 
+		if ( $this->action_handler->verify_post( self::ACTION_DELETE_SUPPLIER, self::ACTION_DELETE_SUPPLIER, 'manage_private_sources', self::SLUG ) ) {
+			$this->handle_delete_supplier();
+		}
+
 		if ( $this->action_handler->verify_post( self::ACTION_SAVE_ORIGIN, self::ACTION_SAVE_ORIGIN, 'manage_private_sources', self::SLUG ) ) {
 			$this->handle_save_origin();
 		}
 
 		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE_ORIGIN, self::ACTION_DEACTIVATE_ORIGIN, 'manage_private_sources', self::SLUG ) ) {
 			$this->handle_deactivate_origin();
+		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_DELETE_ORIGIN, self::ACTION_DELETE_ORIGIN, 'manage_private_sources', self::SLUG ) ) {
+			$this->handle_delete_origin();
 		}
 	}
 
@@ -69,6 +82,20 @@ final class SuppliersOriginsPage {
 		$entity = isset( $_GET['entity'] ) ? sanitize_key( wp_unslash( (string) $_GET['entity'] ) ) : '';
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : 'list';
+
+		if ( 'delete' === $action ) {
+			if ( 'supplier' === $entity ) {
+				$this->render_supplier_delete_confirmation();
+				return;
+			}
+
+			if ( 'origin' === $entity ) {
+				$this->render_origin_delete_confirmation();
+				return;
+			}
+
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
 
 		if ( 'supplier' === $entity && ( 'add' === $action || 'edit' === $action ) ) {
 			$this->render_supplier_form( 'edit' === $action );
@@ -297,6 +324,17 @@ final class SuppliersOriginsPage {
 		submit_button( $is_edit ? __( 'Save Supplier', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Supplier', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		echo '</div></form>';
+
+		if ( $is_edit && isset( $record['id'] ) && (int) $record['id'] > 0 ) {
+			AdminPermanentDeleteFlow::render_edit_danger_zone(
+				self::SLUG,
+				(int) $record['id'],
+				self::ACTION_DELETE_SUPPLIER,
+				'manage_private_sources',
+				[ 'entity' => 'supplier' ]
+			);
+		}
+
 		AdminPageLayout::close_page();
 	}
 
@@ -408,6 +446,17 @@ final class SuppliersOriginsPage {
 		submit_button( $is_edit ? __( 'Save Origin', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Origin', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		echo '</div></form>';
+
+		if ( $is_edit && isset( $record['id'] ) && (int) $record['id'] > 0 ) {
+			AdminPermanentDeleteFlow::render_edit_danger_zone(
+				self::SLUG,
+				(int) $record['id'],
+				self::ACTION_DELETE_ORIGIN,
+				'manage_private_sources',
+				[ 'entity' => 'origin' ]
+			);
+		}
+
 		AdminPageLayout::close_page();
 	}
 
@@ -630,6 +679,146 @@ final class SuppliersOriginsPage {
 		$this->action_handler->redirect( self::SLUG );
 	}
 
+	private function handle_delete_supplier(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid supplier.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->supplier_repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Supplier not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$dependencies = $this->dependency_checker->check_supplier( $id );
+
+		if ( ! $dependencies->can_delete ) {
+			$this->action_handler->notices()->flash_error( implode( ' ', $dependencies->blocking_reasons ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		if ( ! $this->supplier_repository->hardDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to delete supplier.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log( 'deleted', 'supplier', $id, $previous, null );
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Supplier permanently deleted.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Supplier deleted, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function handle_delete_origin(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid origin.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->origin_repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Origin not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$dependencies = $this->dependency_checker->check_origin( $id );
+
+		if ( ! $dependencies->can_delete ) {
+			$this->action_handler->notices()->flash_error( implode( ' ', $dependencies->blocking_reasons ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		if ( ! $this->origin_repository->hardDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to delete origin.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log( 'deleted', 'origin', $id, $previous, null );
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Origin permanently deleted.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Origin deleted, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_supplier_delete_confirmation(): void {
+		AdminPageAccess::require_capability( 'manage_private_sources' );
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$record = $this->supplier_repository->findById( $id );
+
+		if ( null === $record ) {
+			wp_die( esc_html__( 'Supplier not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		AdminPermanentDeleteFlow::render_confirmation_screen(
+			self::SLUG,
+			self::ACTION_DELETE_SUPPLIER,
+			self::ACTION_DEACTIVATE_SUPPLIER,
+			'manage_private_sources',
+			__( 'Supplier', 'cetech-woocommerce-delivery-engine' ),
+			$id,
+			(string) ( $record['internal_name'] ?? '' ),
+			(string) ( $record['internal_code'] ?? '' ),
+			$this->dependency_checker->check_supplier( $id ),
+			[ 'entity' => 'supplier' ]
+		);
+	}
+
+	private function render_origin_delete_confirmation(): void {
+		AdminPageAccess::require_capability( 'manage_private_sources' );
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$record = $this->origin_repository->findById( $id );
+
+		if ( null === $record ) {
+			wp_die( esc_html__( 'Origin not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		AdminPermanentDeleteFlow::render_confirmation_screen(
+			self::SLUG,
+			self::ACTION_DELETE_ORIGIN,
+			self::ACTION_DEACTIVATE_ORIGIN,
+			'manage_private_sources',
+			__( 'Origin', 'cetech-woocommerce-delivery-engine' ),
+			$id,
+			(string) ( $record['internal_name'] ?? '' ),
+			(string) ( $record['internal_code'] ?? '' ),
+			$this->dependency_checker->check_origin( $id ),
+			[ 'entity' => 'origin' ]
+		);
+	}
+
 	/**
 	 * @return array<string, mixed>
 	 */
@@ -840,15 +1029,29 @@ final class SuppliersOriginsPage {
 	private function render_supplier_actions( int $id ): string {
 		$edit = '<a href="' . esc_url( $this->form_url( 'supplier', 'edit', $id ) ) . '">' . esc_html__( 'Edit', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		$deactivate = $this->deactivate_form( self::ACTION_DEACTIVATE_SUPPLIER, $id, __( 'Deactivate this supplier?', 'cetech-woocommerce-delivery-engine' ), __( 'Deactivate', 'cetech-woocommerce-delivery-engine' ) );
+		$delete = AdminPermanentDeleteFlow::list_delete_link(
+			self::SLUG,
+			$id,
+			self::ACTION_DELETE_SUPPLIER,
+			'manage_private_sources',
+			[ 'entity' => 'supplier' ]
+		);
 
-		return $edit . $deactivate;
+		return $edit . $deactivate . $delete;
 	}
 
 	private function render_origin_actions( int $id ): string {
 		$edit = '<a href="' . esc_url( $this->form_url( 'origin', 'edit', $id ) ) . '">' . esc_html__( 'Edit', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		$deactivate = $this->deactivate_form( self::ACTION_DEACTIVATE_ORIGIN, $id, __( 'Deactivate this origin?', 'cetech-woocommerce-delivery-engine' ), __( 'Deactivate', 'cetech-woocommerce-delivery-engine' ) );
+		$delete = AdminPermanentDeleteFlow::list_delete_link(
+			self::SLUG,
+			$id,
+			self::ACTION_DELETE_ORIGIN,
+			'manage_private_sources',
+			[ 'entity' => 'origin' ]
+		);
 
-		return $edit . $deactivate;
+		return $edit . $deactivate . $delete;
 	}
 
 	private function deactivate_form( string $action, int $id, string $confirm, string $label ): string {

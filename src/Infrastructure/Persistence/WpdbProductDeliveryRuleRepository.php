@@ -167,8 +167,24 @@ final class WpdbProductDeliveryRuleRepository extends AbstractWpdbRepository imp
 		return $this->mark_inactive( $id );
 	}
 
+	public function hardDelete( int $id ): bool {
+		return $this->delete_row_by_id( $id );
+	}
+
 	public function count_all(): int {
 		return parent::count_all();
+	}
+
+	public function countBySupplierId( int $supplier_id ): int {
+		return $this->count_where( 'supplier_id', $supplier_id );
+	}
+
+	public function countByOriginId( int $origin_id ): int {
+		return $this->count_where( 'origin_id', $origin_id );
+	}
+
+	public function countByLogisticsProfileId( int $logistics_profile_id ): int {
+		return $this->count_where( 'logistics_profile_id', $logistics_profile_id );
 	}
 
 	/**

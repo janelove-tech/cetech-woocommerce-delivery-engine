@@ -61,6 +61,10 @@ final class WpdbDestinationZoneRepository extends AbstractWpdbRepository impleme
 		return $this->mark_inactive( $id );
 	}
 
+	public function hardDelete( int $id ): bool {
+		return $this->delete_row_by_id( $id );
+	}
+
 	public function count_all(): int {
 		return parent::count_all();
 	}

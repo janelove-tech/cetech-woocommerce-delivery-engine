@@ -124,7 +124,8 @@ final class AdminPageRenderer {
 					'onclick' => true,
 				],
 				'span'   => [
-					'class' => true,
+					'class'       => true,
+					'aria-hidden' => true,
 				],
 				'strong' => [],
 				'em'     => [],

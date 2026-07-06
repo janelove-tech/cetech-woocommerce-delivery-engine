@@ -53,6 +53,7 @@ use CetechDeliveryEngine\Infrastructure\Persistence\WpdbRateCardRepository;
 use CetechDeliveryEngine\Infrastructure\Persistence\WpdbSupplierRepository;
 use CetechDeliveryEngine\Integrations\Registry\IntegrationRegistry;
 use CetechDeliveryEngine\Presentation\Admin\AdminActionHandler;
+use CetechDeliveryEngine\Presentation\Admin\AdminRecordDependencyChecker;
 use CetechDeliveryEngine\Presentation\Admin\AdminMenu;
 use CetechDeliveryEngine\Presentation\Admin\AdminNoticeService;
 use CetechDeliveryEngine\Presentation\Admin\ConfigurationAuditLogger;
@@ -260,6 +261,15 @@ final class Plugin {
 			static fn ( ServiceContainer $container ): ConfigurationAuditLogger => new ConfigurationAuditLogger(
 				$container->get( AuditLogRepositoryInterface::class ),
 				$container->get( Logger::class )
+			)
+		);
+
+		$this->container->singleton(
+			AdminRecordDependencyChecker::class,
+			static fn ( ServiceContainer $container ): AdminRecordDependencyChecker => new AdminRecordDependencyChecker(
+				$container->get( RateCardRepositoryInterface::class ),
+				$container->get( OriginRepositoryInterface::class ),
+				$container->get( ProductDeliveryRuleRepositoryInterface::class )
 			)
 		);
 
@@ -555,7 +565,8 @@ final class Plugin {
 				$container->get( LogisticsProfileRepositoryInterface::class ),
 				$container->get( LogisticsProfileValidator::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 
@@ -565,7 +576,8 @@ final class Plugin {
 				$container->get( DeliveryOfferRepositoryInterface::class ),
 				$container->get( DeliveryOfferValidator::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 
@@ -579,7 +591,8 @@ final class Plugin {
 				$container->get( DestinationRuleValidator::class ),
 				$container->get( DestinationZoneTestMatcher::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 
@@ -589,7 +602,8 @@ final class Plugin {
 				$container->get( PickupLocationRepositoryInterface::class ),
 				$container->get( PickupLocationValidator::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 
@@ -601,7 +615,8 @@ final class Plugin {
 				$container->get( SupplierValidator::class ),
 				$container->get( OriginValidator::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 
@@ -618,7 +633,8 @@ final class Plugin {
 				$container->get( AdminRateCardTester::class ),
 				$container->get( RateQuoteEngine::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 
@@ -634,7 +650,8 @@ final class Plugin {
 				$container->get( ProductDeliveryRuleResolver::class ),
 				$container->get( ProductDeliverySelectionValidator::class ),
 				$container->get( AdminActionHandler::class ),
-				$container->get( ConfigurationAuditLogger::class )
+				$container->get( ConfigurationAuditLogger::class ),
+				$container->get( AdminRecordDependencyChecker::class )
 			)
 		);
 

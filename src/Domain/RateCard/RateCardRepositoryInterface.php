@@ -30,7 +30,17 @@ interface RateCardRepositoryInterface {
 
 	public function softDelete( int $id ): bool;
 
+	public function hardDelete( int $id ): bool;
+
 	public function count_all(): int;
+
+	public function countByDeliveryOfferId( int $delivery_offer_id ): int;
+
+	public function countByDestinationZoneId( int $destination_zone_id ): int;
+
+	public function countByLogisticsProfileId( int $logistics_profile_id ): int;
+
+	public function countOrderSnapshotReferences( int $rate_card_id ): int;
 
 	/**
 	 * Active rate cards matching exact offer, zone, and currency (quote engine prefilter).

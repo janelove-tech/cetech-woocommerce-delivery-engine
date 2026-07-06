@@ -49,5 +49,13 @@ interface ProductDeliveryRuleRepositoryInterface {
 
 	public function deactivate( int $id ): bool;
 
+	public function hardDelete( int $id ): bool;
+
 	public function count_all(): int;
+
+	public function countBySupplierId( int $supplier_id ): int;
+
+	public function countByOriginId( int $origin_id ): int;
+
+	public function countByLogisticsProfileId( int $logistics_profile_id ): int;
 }

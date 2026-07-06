@@ -18,11 +18,14 @@ final class DeliveryOffersPage {
 
 	private const ACTION_DEACTIVATE = 'cetech_de_deactivate_delivery_offer';
 
+	private const ACTION_DELETE = 'cetech_de_delete_delivery_offer';
+
 	public function __construct(
 		private DeliveryOfferRepositoryInterface $repository,
 		private DeliveryOfferValidator $validator,
 		private AdminActionHandler $action_handler,
-		private ConfigurationAuditLogger $audit_logger
+		private ConfigurationAuditLogger $audit_logger,
+		private AdminRecordDependencyChecker $dependency_checker
 	) {
 	}
 
@@ -34,6 +37,10 @@ final class DeliveryOffersPage {
 		if ( $this->action_handler->verify_post( self::ACTION_DEACTIVATE, self::ACTION_DEACTIVATE, 'manage_delivery_offers', self::SLUG ) ) {
 			$this->handle_deactivate();
 		}
+
+		if ( $this->action_handler->verify_post( self::ACTION_DELETE, self::ACTION_DELETE, 'manage_delivery_offers', self::SLUG ) ) {
+			$this->handle_delete();
+		}
 	}
 
 	public function render(): void {
@@ -43,6 +50,11 @@ final class DeliveryOffersPage {
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : 'list';
+
+		if ( 'delete' === $action ) {
+			$this->render_delete_confirmation();
+			return;
+		}
 
 		if ( 'add' === $action || 'edit' === $action ) {
 			$this->render_form( 'edit' === $action );
@@ -262,6 +274,16 @@ final class DeliveryOffersPage {
 		submit_button( $is_edit ? __( 'Save Offer', 'cetech-woocommerce-delivery-engine' ) : __( 'Create Offer', 'cetech-woocommerce-delivery-engine' ) );
 		echo ' <a class="button" href="' . esc_url( AdminPageRenderer::list_url( self::SLUG ) ) . '">' . esc_html__( 'Cancel', 'cetech-woocommerce-delivery-engine' ) . '</a>';
 		echo '</div></form>';
+
+		if ( $is_edit && isset( $record['id'] ) && (int) $record['id'] > 0 ) {
+			AdminPermanentDeleteFlow::render_edit_danger_zone(
+				self::SLUG,
+				(int) $record['id'],
+				self::ACTION_DELETE,
+				'manage_delivery_offers'
+			);
+		}
+
 		AdminPageLayout::close_page();
 	}
 
@@ -394,6 +416,75 @@ final class DeliveryOffersPage {
 		$this->action_handler->redirect( self::SLUG );
 	}
 
+	private function handle_delete(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$id = isset( $_POST['id'] ) ? (int) $_POST['id'] : 0;
+
+		if ( $id <= 0 ) {
+			$this->action_handler->notices()->flash_error( __( 'Invalid delivery offer.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$previous = $this->repository->findById( $id );
+
+		if ( null === $previous ) {
+			$this->action_handler->notices()->flash_error( __( 'Delivery offer not found.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$dependencies = $this->dependency_checker->check_delivery_offer( $id );
+
+		if ( ! $dependencies->can_delete ) {
+			$this->action_handler->notices()->flash_error( implode( ' ', $dependencies->blocking_reasons ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		if ( ! $this->repository->hardDelete( $id ) ) {
+			$this->action_handler->notices()->flash_error( __( 'Unable to delete delivery offer.', 'cetech-woocommerce-delivery-engine' ) );
+			$this->action_handler->redirect( self::SLUG );
+		}
+
+		$audit_logged = $this->audit_logger->log( 'deleted', 'delivery_offer', $id, $previous, null );
+
+		if ( $audit_logged ) {
+			$this->action_handler->notices()->flash_success( __( 'Delivery offer permanently deleted.', 'cetech-woocommerce-delivery-engine' ) );
+		} else {
+			$this->action_handler->notices()->flash_warning( __( 'Delivery offer deleted, but audit logging failed.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$this->action_handler->redirect( self::SLUG );
+	}
+
+	private function render_delete_confirmation(): void {
+		AdminPageAccess::require_capability( 'manage_delivery_offers' );
+		$this->action_handler->notices()->render_notices();
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$id = isset( $_GET['id'] ) ? (int) $_GET['id'] : 0;
+
+		if ( $id <= 0 ) {
+			wp_die( esc_html__( 'Invalid delete request.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		$record = $this->repository->findById( $id );
+
+		if ( null === $record ) {
+			wp_die( esc_html__( 'Delivery offer not found.', 'cetech-woocommerce-delivery-engine' ) );
+		}
+
+		AdminPermanentDeleteFlow::render_confirmation_screen(
+			self::SLUG,
+			self::ACTION_DELETE,
+			self::ACTION_DEACTIVATE,
+			'manage_delivery_offers',
+			__( 'Delivery Offer', 'cetech-woocommerce-delivery-engine' ),
+			$id,
+			(string) ( $record['public_label'] ?? $record['internal_name'] ?? '' ),
+			(string) ( $record['internal_code'] ?? '' ),
+			$this->dependency_checker->check_delivery_offer( $id )
+		);
+	}
+
 	/**
 	 * @return array<string, mixed>
 	 */
@@ -498,7 +589,14 @@ final class DeliveryOffersPage {
 		$deactivate .= esc_html__( 'Deactivate', 'cetech-woocommerce-delivery-engine' );
 		$deactivate .= '</button></form>';
 
-		return $edit . $deactivate;
+		$delete = AdminPermanentDeleteFlow::list_delete_link(
+			self::SLUG,
+			$id,
+			self::ACTION_DELETE,
+			'manage_delivery_offers'
+		);
+
+		return $edit . $deactivate . $delete;
 	}
 
 	/**

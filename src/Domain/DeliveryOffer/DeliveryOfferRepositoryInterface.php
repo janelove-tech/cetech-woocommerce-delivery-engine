@@ -30,5 +30,7 @@ interface DeliveryOfferRepositoryInterface {
 
 	public function softDelete( int $id ): bool;
 
+	public function hardDelete( int $id ): bool;
+
 	public function count_all(): int;
 }

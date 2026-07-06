@@ -73,8 +73,16 @@ final class WpdbOriginRepository extends AbstractWpdbRepository implements Origi
 		return $this->mark_inactive( $id );
 	}
 
+	public function hardDelete( int $id ): bool {
+		return $this->delete_row_by_id( $id );
+	}
+
 	public function count_all(): int {
 		return parent::count_all();
+	}
+
+	public function countBySupplierId( int $supplier_id ): int {
+		return $this->count_where( 'supplier_id', $supplier_id );
 	}
 
 	/**
